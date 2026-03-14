@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,16 +17,16 @@
 package org.springframework.aop.aspectj;
 
 import org.aopalliance.aop.Advice;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.Pointcut;
 import org.springframework.aop.PointcutAdvisor;
 import org.springframework.core.Ordered;
 import org.springframework.util.Assert;
-import org.springframework.util.ObjectUtils;
 
 /**
- * AspectJPointcutAdvisor that adapts an {@link AbstractAspectJAdvice}
- * to the {@link org.springframework.aop.PointcutAdvisor} interface.
+ * {@code AspectJPointcutAdvisor} adapts an {@link AbstractAspectJAdvice} to the
+ * {@link PointcutAdvisor} interface.
  *
  * @author Adrian Colyer
  * @author Juergen Hoeller
@@ -38,11 +38,11 @@ public class AspectJPointcutAdvisor implements PointcutAdvisor, Ordered {
 
 	private final Pointcut pointcut;
 
-	private Integer order;
+	private @Nullable Integer order;
 
 
 	/**
-	 * Create a new AspectJPointcutAdvisor for the given advice
+	 * Create a new AspectJPointcutAdvisor for the given advice.
 	 * @param advice the AbstractAspectJAdvice to wrap
 	 */
 	public AspectJPointcutAdvisor(AbstractAspectJAdvice advice) {
@@ -51,24 +51,9 @@ public class AspectJPointcutAdvisor implements PointcutAdvisor, Ordered {
 		this.pointcut = advice.buildSafePointcut();
 	}
 
+
 	public void setOrder(int order) {
 		this.order = order;
-	}
-
-
-	@Override
-	public boolean isPerInstance() {
-		return true;
-	}
-
-	@Override
-	public Advice getAdvice() {
-		return this.advice;
-	}
-
-	@Override
-	public Pointcut getPointcut() {
-		return this.pointcut;
 	}
 
 	@Override
@@ -81,22 +66,35 @@ public class AspectJPointcutAdvisor implements PointcutAdvisor, Ordered {
 		}
 	}
 
+	@Override
+	public Advice getAdvice() {
+		return this.advice;
+	}
 
 	@Override
-	public boolean equals(Object other) {
-		if (this == other) {
-			return true;
-		}
-		if (!(other instanceof AspectJPointcutAdvisor)) {
-			return false;
-		}
-		AspectJPointcutAdvisor otherAdvisor = (AspectJPointcutAdvisor) other;
-		return (ObjectUtils.nullSafeEquals(this.advice, otherAdvisor.advice));
+	public Pointcut getPointcut() {
+		return this.pointcut;
+	}
+
+	/**
+	 * Return the name of the aspect (bean) in which the advice was declared.
+	 * @since 4.3.15
+	 * @see AbstractAspectJAdvice#getAspectName()
+	 */
+	public String getAspectName() {
+		return this.advice.getAspectName();
+	}
+
+
+	@Override
+	public boolean equals(@Nullable Object other) {
+		return (this == other || (other instanceof AspectJPointcutAdvisor that &&
+				this.advice.equals(that.advice)));
 	}
 
 	@Override
 	public int hashCode() {
-		return AspectJPointcutAdvisor.class.hashCode();
+		return AspectJPointcutAdvisor.class.hashCode() * 29 + this.advice.hashCode();
 	}
 
 }

@@ -1,7 +1,7 @@
 /**
  * Spring's repackaging of
- * <a href="http://objenesis.org">Objenesis 2.1</a>
- * (for internal use only).
+ * <a href="http://objenesis.org">Objenesis 3.5</a>
+ * (with SpringObjenesis entry point; for internal use only).
  *
  * <p>This repackaging technique avoids any potential conflicts with
  * dependencies on different Objenesis versions at the application
@@ -12,4 +12,7 @@
  * <a href="http://objenesis.org/tutorial.html">Objenesis docs</a>
  * for details when working with these classes.
  */
+@NullUnmarked
 package org.springframework.objenesis;
+
+import org.jspecify.annotations.NullUnmarked;

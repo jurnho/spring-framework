@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,8 @@ package org.springframework.messaging.core;
 
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessagingException;
 
@@ -26,9 +28,10 @@ import org.springframework.messaging.MessagingException;
  *
  * @author Mark Fisher
  * @author Rossen Stoyanchev
+ * @author Juergen Hoeller
  * @since 4.0
- * @see GenericMessagingTemplate
  * @param <D> the type of destination
+ * @see GenericMessagingTemplate
  */
 public interface MessageRequestReplyOperations<D> {
 
@@ -38,7 +41,7 @@ public interface MessageRequestReplyOperations<D> {
 	 * @return the reply, possibly {@code null} if the message could not be received,
 	 * for example due to a timeout
 	 */
-	Message<?> sendAndReceive(Message<?> requestMessage) throws MessagingException;
+	@Nullable Message<?> sendAndReceive(Message<?> requestMessage) throws MessagingException;
 
 	/**
 	 * Send a request message and receive the reply from the given destination.
@@ -47,7 +50,7 @@ public interface MessageRequestReplyOperations<D> {
 	 * @return the reply, possibly {@code null} if the message could not be received,
 	 * for example due to a timeout
 	 */
-	Message<?> sendAndReceive(D destination, Message<?> requestMessage) throws MessagingException;
+	@Nullable Message<?> sendAndReceive(D destination, Message<?> requestMessage) throws MessagingException;
 
 	/**
 	 * Convert the given request Object to serialized form, possibly using a
@@ -59,7 +62,7 @@ public interface MessageRequestReplyOperations<D> {
 	 * @return the payload of the reply message, possibly {@code null} if the message
 	 * could not be received, for example due to a timeout
 	 */
-	<T> T convertSendAndReceive(Object request, Class<T> targetClass) throws MessagingException;
+	<T> @Nullable T convertSendAndReceive(Object request, Class<T> targetClass) throws MessagingException;
 
 	/**
 	 * Convert the given request Object to serialized form, possibly using a
@@ -72,7 +75,22 @@ public interface MessageRequestReplyOperations<D> {
 	 * @return the payload of the reply message, possibly {@code null} if the message
 	 * could not be received, for example due to a timeout
 	 */
-	<T> T convertSendAndReceive(D destination, Object request, Class<T> targetClass) throws MessagingException;
+	<T> @Nullable T convertSendAndReceive(D destination, Object request, Class<T> targetClass) throws MessagingException;
+
+	/**
+	 * Convert the given request Object to serialized form, possibly using a
+	 * {@link org.springframework.messaging.converter.MessageConverter}, send
+	 * it as a {@link Message} with the given headers, to the specified destination,
+	 * receive the reply and convert its body of the specified target class.
+	 * @param request payload for the request message to send
+	 * @param headers the headers for the request message to send
+	 * @param targetClass the target type to convert the payload of the reply to
+	 * @return the payload of the reply message, possibly {@code null} if the message
+	 * could not be received, for example due to a timeout
+	 * @since 7.0
+	 */
+	<T> @Nullable T convertSendAndReceive(Object request, @Nullable Map<String, Object> headers, Class<T> targetClass)
+			throws MessagingException;
 
 	/**
 	 * Convert the given request Object to serialized form, possibly using a
@@ -81,59 +99,79 @@ public interface MessageRequestReplyOperations<D> {
 	 * receive the reply and convert its body of the specified target class.
 	 * @param destination the target destination
 	 * @param request payload for the request message to send
-	 * @param headers headers for the request message to send
+	 * @param headers the headers for the request message to send
 	 * @param targetClass the target type to convert the payload of the reply to
 	 * @return the payload of the reply message, possibly {@code null} if the message
 	 * could not be received, for example due to a timeout
 	 */
-	<T> T convertSendAndReceive(D destination, Object request, Map<String, Object> headers, Class<T> targetClass)
+	<T> @Nullable T convertSendAndReceive(
+			D destination, Object request, @Nullable Map<String, Object> headers, Class<T> targetClass)
 			throws MessagingException;
 
 	/**
 	 * Convert the given request Object to serialized form, possibly using a
 	 * {@link org.springframework.messaging.converter.MessageConverter},
-	 * apply the given post processor and send the resulting {@link Message} to a
+	 * apply the given post-processor and send the resulting {@link Message} to a
 	 * default destination, receive the reply and convert its body of the given
 	 * target class.
 	 * @param request payload for the request message to send
 	 * @param targetClass the target type to convert the payload of the reply to
-	 * @param requestPostProcessor post process to apply to the request message
+	 * @param requestPostProcessor post-process to apply to the request message
 	 * @return the payload of the reply message, possibly {@code null} if the message
 	 * could not be received, for example due to a timeout
 	 */
-	<T> T convertSendAndReceive(Object request, Class<T> targetClass, MessagePostProcessor requestPostProcessor)
+	<T> @Nullable T convertSendAndReceive(
+			Object request, Class<T> targetClass, @Nullable MessagePostProcessor requestPostProcessor)
 			throws MessagingException;
 
 	/**
 	 * Convert the given request Object to serialized form, possibly using a
 	 * {@link org.springframework.messaging.converter.MessageConverter},
-	 * apply the given post processor and send the resulting {@link Message} to the
+	 * apply the given post-processor and send the resulting {@link Message} to the
 	 * given destination, receive the reply and convert its body of the given
 	 * target class.
 	 * @param destination the target destination
 	 * @param request payload for the request message to send
 	 * @param targetClass the target type to convert the payload of the reply to
-	 * @param requestPostProcessor post process to apply to the request message
+	 * @param requestPostProcessor post-process to apply to the request message
 	 * @return the payload of the reply message, possibly {@code null} if the message
 	 * could not be received, for example due to a timeout
 	 */
-	<T> T convertSendAndReceive(D destination, Object request, Class<T> targetClass,
+	<T> @Nullable T convertSendAndReceive(D destination, Object request, Class<T> targetClass,
 			MessagePostProcessor requestPostProcessor) throws MessagingException;
 
 	/**
 	 * Convert the given request Object to serialized form, possibly using a
 	 * {@link org.springframework.messaging.converter.MessageConverter},
-	 * wrap it as a message with the given headers, apply the given post processor
+	 * wrap it as a message with the given headers, apply the given post-processor
+	 * and send the resulting {@link Message} to the specified destination, receive
+	 * the reply and convert its body of the given target class.
+	 * @param request payload for the request message to send
+	 * @param targetClass the target type to convert the payload of the reply to
+	 * @param requestPostProcessor post-process to apply to the request message
+	 * @return the payload of the reply message, possibly {@code null} if the message
+	 * could not be received, for example due to a timeout
+	 * @since 7.0
+	 */
+	<T> @Nullable T convertSendAndReceive(
+			Object request, @Nullable Map<String, Object> headers, Class<T> targetClass,
+			@Nullable MessagePostProcessor requestPostProcessor) throws MessagingException;
+
+	/**
+	 * Convert the given request Object to serialized form, possibly using a
+	 * {@link org.springframework.messaging.converter.MessageConverter},
+	 * wrap it as a message with the given headers, apply the given post-processor
 	 * and send the resulting {@link Message} to the specified destination, receive
 	 * the reply and convert its body of the given target class.
 	 * @param destination the target destination
 	 * @param request payload for the request message to send
 	 * @param targetClass the target type to convert the payload of the reply to
-	 * @param requestPostProcessor post process to apply to the request message
+	 * @param requestPostProcessor post-process to apply to the request message
 	 * @return the payload of the reply message, possibly {@code null} if the message
 	 * could not be received, for example due to a timeout
 	 */
-	<T> T convertSendAndReceive(D destination, Object request, Map<String, Object> headers,
-			Class<T> targetClass, MessagePostProcessor requestPostProcessor) throws MessagingException;
+	<T> @Nullable T convertSendAndReceive(
+			D destination, Object request, @Nullable Map<String, Object> headers, Class<T> targetClass,
+			@Nullable MessagePostProcessor requestPostProcessor) throws MessagingException;
 
 }

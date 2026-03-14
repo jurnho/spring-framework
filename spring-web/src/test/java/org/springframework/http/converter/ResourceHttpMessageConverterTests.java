@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,65 +16,76 @@
 
 package org.springframework.http.converter;
 
-import static org.hamcrest.core.Is.*;
-import static org.hamcrest.core.IsInstanceOf.*;
-import static org.junit.Assert.*;
-import static org.mockito.BDDMockito.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.Charset;
 import java.util.Arrays;
-import java.util.List;
 
-import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.InputStreamSource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpRange;
-import org.springframework.http.HttpRangeResource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.MediaType;
-import org.springframework.http.MockHttpInputMessage;
-import org.springframework.http.MockHttpOutputMessage;
 import org.springframework.util.FileCopyUtils;
-import org.springframework.util.StringUtils;
+import org.springframework.web.testfixture.http.MockHttpInputMessage;
+import org.springframework.web.testfixture.http.MockHttpOutputMessage;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.mock;
 
 /**
+ * Tests for {@link ResourceHttpMessageConverter}.
  * @author Arjen Poutsma
  * @author Kazuki Shimizu
  * @author Brian Clozel
  */
-public class ResourceHttpMessageConverterTests {
+class ResourceHttpMessageConverterTests {
 
 	private final ResourceHttpMessageConverter converter = new ResourceHttpMessageConverter();
 
 
 	@Test
-	public void canReadResource() {
-		assertTrue(converter.canRead(Resource.class, new MediaType("application", "octet-stream")));
+	void canReadResource() {
+		assertThat(converter.canRead(Resource.class, MediaType.APPLICATION_OCTET_STREAM)).isTrue();
+		assertThat(converter.canRead(ByteArrayResource.class, MediaType.APPLICATION_OCTET_STREAM)).isTrue();
 	}
 
 	@Test
-	public void canWriteResource() {
-		assertTrue(converter.canWrite(Resource.class, new MediaType("application", "octet-stream")));
-		assertTrue(converter.canWrite(Resource.class, MediaType.ALL));
+	void canWriteResource() {
+		assertThat(converter.canWrite(Resource.class, MediaType.APPLICATION_OCTET_STREAM)).isTrue();
+		assertThat(converter.canWrite(Resource.class, MediaType.ALL)).isTrue();
+		assertThat(converter.canWrite(ByteArrayResource.class, MediaType.ALL)).isTrue();
 	}
 
 	@Test
-	public void shouldReadImageResource() throws IOException {
+	void shouldReadImageResource() throws IOException {
 		byte[] body = FileCopyUtils.copyToByteArray(getClass().getResourceAsStream("logo.jpg"));
 		MockHttpInputMessage inputMessage = new MockHttpInputMessage(body);
 		inputMessage.getHeaders().setContentType(MediaType.IMAGE_JPEG);
+		inputMessage.getHeaders().setContentDisposition(
+				ContentDisposition.attachment().filename("yourlogo.jpg").build());
 		Resource actualResource = converter.read(Resource.class, inputMessage);
-		assertThat(FileCopyUtils.copyToByteArray(actualResource.getInputStream()), is(body));
+		assertThat(FileCopyUtils.copyToByteArray(actualResource.getInputStream())).isEqualTo(body);
+		assertThat(actualResource.getFilename()).isEqualTo("yourlogo.jpg");
+	}
+
+	@Test // gh-36368
+	void shouldNotReadAsUnknownType() throws IOException {
+		byte[] body = FileCopyUtils.copyToByteArray(getClass().getResourceAsStream("logo.jpg"));
+		MockHttpInputMessage inputMessage = new MockHttpInputMessage(body);
+		inputMessage.getHeaders().setContentType(MediaType.IMAGE_JPEG);
+		inputMessage.getHeaders().setContentDisposition(
+				ContentDisposition.attachment().filename("yourlogo.jpg").build());
+		assertThatExceptionOfType(HttpMessageNotReadableException.class).isThrownBy(() ->
+				converter.read(CustomResource.class, inputMessage));
 	}
 
 	@Test  // SPR-13443
@@ -82,130 +93,48 @@ public class ResourceHttpMessageConverterTests {
 		try (InputStream body = getClass().getResourceAsStream("logo.jpg") ) {
 			MockHttpInputMessage inputMessage = new MockHttpInputMessage(body);
 			inputMessage.getHeaders().setContentType(MediaType.IMAGE_JPEG);
+			inputMessage.getHeaders().setContentDisposition(
+					ContentDisposition.attachment().filename("yourlogo.jpg").build());
+			inputMessage.getHeaders().setContentLength(123);
 			Resource actualResource = converter.read(InputStreamResource.class, inputMessage);
-			assertThat(actualResource, instanceOf(InputStreamResource.class));
-			assertThat(actualResource.getInputStream(), is(body));
+			assertThat(actualResource).isInstanceOf(InputStreamResource.class);
+			assertThat(actualResource.getInputStream()).isEqualTo(body);
+			assertThat(actualResource.getFilename()).isEqualTo("yourlogo.jpg");
+			assertThat(actualResource.contentLength()).isEqualTo(123);
+		}
+	}
+
+	@Test  // SPR-14882
+	public void shouldNotReadInputStreamResource() throws IOException {
+		ResourceHttpMessageConverter noStreamConverter = new ResourceHttpMessageConverter(false);
+		try (InputStream body = getClass().getResourceAsStream("logo.jpg") ) {
+			MockHttpInputMessage inputMessage = new MockHttpInputMessage(body);
+			inputMessage.getHeaders().setContentType(MediaType.IMAGE_JPEG);
+			assertThatExceptionOfType(HttpMessageNotReadableException.class).isThrownBy(() ->
+					noStreamConverter.read(InputStreamResource.class, inputMessage));
+		}
+	}
+
+	@Test // gh-36368
+	public void shouldNotReadStreamResourceAsUnknownType() throws IOException {
+		try (InputStream body = getClass().getResourceAsStream("logo.jpg") ) {
+			MockHttpInputMessage inputMessage = new MockHttpInputMessage(body);
+			inputMessage.getHeaders().setContentType(MediaType.IMAGE_JPEG);
+			assertThatExceptionOfType(HttpMessageNotReadableException.class).isThrownBy(() ->
+					converter.read(CustomStreamResource.class, inputMessage));
 		}
 	}
 
 	@Test
-	public void shouldWriteImageResource() throws IOException {
+	void shouldWriteImageResource() throws IOException {
 		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
 		Resource body = new ClassPathResource("logo.jpg", getClass());
 		converter.write(body, null, outputMessage);
-		assertEquals("Invalid content-type", MediaType.IMAGE_JPEG,
-				outputMessage.getHeaders().getContentType());
-		assertEquals("Invalid content-length", body.getFile().length(), outputMessage.getHeaders().getContentLength());
-	}
 
-	@Test
-	public void shouldWritePartialContentByteRange() throws Exception {
-		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource body = new ClassPathResource("byterangeresource.txt", getClass());
-		List<HttpRange> httpRangeList = HttpRange.parseRanges("bytes=0-5");
-
-		converter.write(new HttpRangeResource(httpRangeList, body), MediaType.TEXT_PLAIN, outputMessage);
-
-		HttpHeaders headers = outputMessage.getHeaders();
-		assertThat(headers.getContentType(), is(MediaType.TEXT_PLAIN));
-		assertThat(headers.getContentLength(), is(6L));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).size(), is(1));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).get(0), is("bytes 0-5/39"));
-		assertThat(outputMessage.getBodyAsString(Charset.forName("UTF-8")), is("Spring"));
-	}
-
-	@Test
-	public void shouldWritePartialContentByteRangeNoEnd() throws Exception {
-		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource body = new ClassPathResource("byterangeresource.txt", getClass());
-		List<HttpRange> httpRangeList = HttpRange.parseRanges("bytes=7-");
-
-		converter.write(new HttpRangeResource(httpRangeList, body), MediaType.TEXT_PLAIN, outputMessage);
-
-		HttpHeaders headers = outputMessage.getHeaders();
-		assertThat(headers.getContentType(), is(MediaType.TEXT_PLAIN));
-		assertThat(headers.getContentLength(), is(32L));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).size(), is(1));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).get(0), is("bytes 7-38/39"));
-		assertThat(outputMessage.getBodyAsString(Charset.forName("UTF-8")), is("Framework test resource content."));
-	}
-
-	@Test
-	public void shouldWritePartialContentByteRangeLargeEnd() throws Exception {
-		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource body = new ClassPathResource("byterangeresource.txt", getClass());
-		List<HttpRange> httpRangeList = HttpRange.parseRanges("bytes=7-10000");
-
-		converter.write(new HttpRangeResource(httpRangeList, body), MediaType.TEXT_PLAIN, outputMessage);
-
-		HttpHeaders headers = outputMessage.getHeaders();
-		assertThat(headers.getContentType(), is(MediaType.TEXT_PLAIN));
-		assertThat(headers.getContentLength(), is(32L));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).size(), is(1));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).get(0), is("bytes 7-38/39"));
-		assertThat(outputMessage.getBodyAsString(Charset.forName("UTF-8")), is("Framework test resource content."));
-	}
-
-	@Test
-	public void shouldWritePartialContentSuffixRange() throws Exception {
-		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource body = new ClassPathResource("byterangeresource.txt", getClass());
-		List<HttpRange> httpRangeList = HttpRange.parseRanges("bytes=-8");
-
-		converter.write(new HttpRangeResource(httpRangeList, body), MediaType.TEXT_PLAIN, outputMessage);
-
-		HttpHeaders headers = outputMessage.getHeaders();
-		assertThat(headers.getContentType(), is(MediaType.TEXT_PLAIN));
-		assertThat(headers.getContentLength(), is(8L));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).size(), is(1));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).get(0), is("bytes 31-38/39"));
-		assertThat(outputMessage.getBodyAsString(Charset.forName("UTF-8")), is("content."));
-	}
-
-	@Test
-	public void shouldWritePartialContentSuffixRangeLargeSuffix() throws Exception {
-		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource body = new ClassPathResource("byterangeresource.txt", getClass());
-		List<HttpRange> httpRangeList = HttpRange.parseRanges("bytes=-50");
-
-		converter.write(new HttpRangeResource(httpRangeList, body), MediaType.TEXT_PLAIN, outputMessage);
-
-		HttpHeaders headers = outputMessage.getHeaders();
-		assertThat(headers.getContentType(), is(MediaType.TEXT_PLAIN));
-		assertThat(headers.getContentLength(), is(39L));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).size(), is(1));
-		assertThat(headers.get(HttpHeaders.CONTENT_RANGE).get(0), is("bytes 0-38/39"));
-		assertThat(outputMessage.getBodyAsString(Charset.forName("UTF-8")), is("Spring Framework test resource content."));
-	}
-
-	@Test
-	public void partialContentMultipleByteRanges() throws Exception {
-		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource body = new ClassPathResource("byterangeresource.txt", getClass());
-		List<HttpRange> httpRangeList = HttpRange.parseRanges("bytes=0-5, 7-15, 17-20");
-
-		converter.write(new HttpRangeResource(httpRangeList, body), MediaType.TEXT_PLAIN, outputMessage);
-
-		HttpHeaders headers = outputMessage.getHeaders();
-		assertThat(headers.getContentType().toString(), Matchers.startsWith("multipart/byteranges;boundary="));
-		String boundary = "--" + headers.getContentType().toString().substring(30);
-		String content = outputMessage.getBodyAsString(Charset.forName("UTF-8"));
-		String[] ranges = StringUtils.tokenizeToStringArray(content, "\r\n", false, true);
-
-		assertThat(ranges[0], is(boundary));
-		assertThat(ranges[1], is("Content-Type: text/plain"));
-		assertThat(ranges[2], is("Content-Range: bytes 0-5/39"));
-		assertThat(ranges[3], is("Spring"));
-
-		assertThat(ranges[4], is(boundary));
-		assertThat(ranges[5], is("Content-Type: text/plain"));
-		assertThat(ranges[6], is("Content-Range: bytes 7-15/39"));
-		assertThat(ranges[7], is("Framework"));
-
-		assertThat(ranges[8], is(boundary));
-		assertThat(ranges[9], is("Content-Type: text/plain"));
-		assertThat(ranges[10], is("Content-Range: bytes 17-20/39"));
-		assertThat(ranges[11], is("test"));
+		assertThat(outputMessage.getHeaders().getContentType())
+				.as("Invalid content-type").isEqualTo(MediaType.IMAGE_JPEG);
+		assertThat(outputMessage.getHeaders().getContentLength())
+				.as("Invalid content-length").isEqualTo(body.getFile().length());
 	}
 
 	@Test  // SPR-10848
@@ -214,48 +143,58 @@ public class ResourceHttpMessageConverterTests {
 		byte[] byteArray = {1, 2, 3};
 		Resource body = new ByteArrayResource(byteArray);
 		converter.write(body, null, outputMessage);
-		assertTrue(Arrays.equals(byteArray, outputMessage.getBodyAsBytes()));
+
+		assertThat(Arrays.equals(byteArray, outputMessage.getBodyAsBytes())).isTrue();
 	}
 
-	// SPR-12999
-	@Test @SuppressWarnings("unchecked")
+	@Test  // SPR-12999
 	public void writeContentNotGettingInputStream() throws Exception {
 		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource resource = mock(Resource.class);
+		Resource resource = mock();
 		given(resource.getInputStream()).willThrow(FileNotFoundException.class);
-
 		converter.write(resource, MediaType.APPLICATION_OCTET_STREAM, outputMessage);
 
-		assertEquals(0, outputMessage.getHeaders().getContentLength());
+		assertThat(outputMessage.getHeaders().getContentLength()).isEqualTo(0);
 	}
 
-	// SPR-12999
-	@Test
+	@Test  // SPR-12999
 	public void writeContentNotClosingInputStream() throws Exception {
 		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource resource = mock(Resource.class);
-		InputStream inputStream = mock(InputStream.class);
+		Resource resource = mock();
+		InputStream inputStream = mock();
 		given(resource.getInputStream()).willReturn(inputStream);
 		given(inputStream.read(any())).willReturn(-1);
-		doThrow(new NullPointerException()).when(inputStream).close();
-
+		willThrow(new NullPointerException()).given(inputStream).close();
 		converter.write(resource, MediaType.APPLICATION_OCTET_STREAM, outputMessage);
 
-		assertEquals(0, outputMessage.getHeaders().getContentLength());
+		assertThat(outputMessage.getHeaders().getContentLength()).isEqualTo(0);
 	}
 
-	// SPR-13620
-	@Test @SuppressWarnings("unchecked")
+	@Test  // SPR-13620
 	public void writeContentInputStreamThrowingNullPointerException() throws Exception {
 		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		Resource resource = mock(Resource.class);
-		InputStream in = mock(InputStream.class);
+		Resource resource = mock();
+		InputStream in = mock();
 		given(resource.getInputStream()).willReturn(in);
 		given(in.read(any())).willThrow(NullPointerException.class);
-
 		converter.write(resource, MediaType.APPLICATION_OCTET_STREAM, outputMessage);
 
-		assertEquals(0, outputMessage.getHeaders().getContentLength());
+		assertThat(outputMessage.getHeaders().getContentLength()).isEqualTo(0);
+	}
+
+	static class CustomStreamResource extends InputStreamResource {
+
+		public CustomStreamResource(InputStreamSource inputStreamSource) {
+			super(inputStreamSource);
+		}
+
+	}
+
+	static class CustomResource extends ByteArrayResource {
+
+		public CustomResource(byte[] byteArray) {
+			super(byteArray);
+		}
 	}
 
 }

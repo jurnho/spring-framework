@@ -9,4 +9,7 @@
  *
  * <p>These adapters do not depend on any other Spring framework classes to allow such usage.
  */
+@NullMarked
 package org.springframework.aop.framework.adapter;
+
+import org.jspecify.annotations.NullMarked;

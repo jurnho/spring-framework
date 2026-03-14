@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.messaging;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.NestedRuntimeException;
 
@@ -28,11 +30,11 @@ import org.springframework.core.NestedRuntimeException;
 @SuppressWarnings("serial")
 public class MessagingException extends NestedRuntimeException {
 
-	private final Message<?> failedMessage;
+	private final @Nullable Message<?> failedMessage;
 
 
 	public MessagingException(Message<?> message) {
-		super(null);
+		super(null, null);
 		this.failedMessage = message;
 	}
 
@@ -41,7 +43,7 @@ public class MessagingException extends NestedRuntimeException {
 		this.failedMessage = null;
 	}
 
-	public MessagingException(String description, Throwable cause) {
+	public MessagingException(@Nullable String description, @Nullable Throwable cause) {
 		super(description, cause);
 		this.failedMessage = null;
 	}
@@ -51,19 +53,25 @@ public class MessagingException extends NestedRuntimeException {
 		this.failedMessage = message;
 	}
 
-	public MessagingException(Message<?> message, Throwable cause) {
+	public MessagingException(Message<?> message, @Nullable Throwable cause) {
 		super(null, cause);
 		this.failedMessage = message;
 	}
 
-	public MessagingException(Message<?> message, String description, Throwable cause) {
+	public MessagingException(Message<?> message, @Nullable String description, @Nullable Throwable cause) {
 		super(description, cause);
 		this.failedMessage = message;
 	}
 
 
-	public Message<?> getFailedMessage() {
+	public @Nullable Message<?> getFailedMessage() {
 		return this.failedMessage;
+	}
+
+	@Override
+	public String toString() {
+		return super.toString() + (this.failedMessage == null ? "" :
+				(", failedMessage=" + this.failedMessage));
 	}
 
 }

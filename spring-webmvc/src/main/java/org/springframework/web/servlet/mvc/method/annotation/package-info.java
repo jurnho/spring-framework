@@ -4,4 +4,7 @@
  * {@link org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping}
  * and {@link org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter}.
  */
+@NullMarked
 package org.springframework.web.servlet.mvc.method.annotation;
+
+import org.jspecify.annotations.NullMarked;

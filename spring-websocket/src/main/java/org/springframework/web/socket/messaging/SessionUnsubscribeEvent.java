@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,15 @@
 
 package org.springframework.web.socket.messaging;
 
-
 import java.security.Principal;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.messaging.Message;
 
 /**
  * Event raised when a new WebSocket client using a Simple Messaging Protocol
- * (e.g. STOMP) sends a request to remove a subscription.
+ * (for example, STOMP) sends a request to remove a subscription.
  *
  * @author Rossen Stoyanchev
  * @since 4.0.3
@@ -31,12 +32,11 @@ import org.springframework.messaging.Message;
 @SuppressWarnings("serial")
 public class SessionUnsubscribeEvent extends AbstractSubProtocolEvent {
 
-
 	public SessionUnsubscribeEvent(Object source, Message<byte[]> message) {
 		super(source, message);
 	}
 
-	public SessionUnsubscribeEvent(Object source, Message<byte[]> message, Principal user) {
+	public SessionUnsubscribeEvent(Object source, Message<byte[]> message, @Nullable Principal user) {
 		super(source, message, user);
 	}
 

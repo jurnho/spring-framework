@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,10 +17,12 @@
 package org.springframework.transaction.interceptor;
 
 import org.aopalliance.aop.Advice;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.ClassFilter;
 import org.springframework.aop.Pointcut;
 import org.springframework.aop.support.AbstractPointcutAdvisor;
+import org.springframework.util.Assert;
 
 /**
  * Advisor driven by a {@link TransactionAttributeSource}, used to include
@@ -38,14 +40,9 @@ import org.springframework.aop.support.AbstractPointcutAdvisor;
 @SuppressWarnings("serial")
 public class TransactionAttributeSourceAdvisor extends AbstractPointcutAdvisor {
 
-	private TransactionInterceptor transactionInterceptor;
+	private @Nullable TransactionInterceptor transactionInterceptor;
 
-	private final TransactionAttributeSourcePointcut pointcut = new TransactionAttributeSourcePointcut() {
-		@Override
-		protected TransactionAttributeSource getTransactionAttributeSource() {
-			return (transactionInterceptor != null ? transactionInterceptor.getTransactionAttributeSource() : null);
-		}
-	};
+	private final TransactionAttributeSourcePointcut pointcut = new TransactionAttributeSourcePointcut();
 
 
 	/**
@@ -67,7 +64,9 @@ public class TransactionAttributeSourceAdvisor extends AbstractPointcutAdvisor {
 	 * Set the transaction interceptor to use for this advisor.
 	 */
 	public void setTransactionInterceptor(TransactionInterceptor interceptor) {
+		Assert.notNull(interceptor, "TransactionInterceptor must not be null");
 		this.transactionInterceptor = interceptor;
+		this.pointcut.setTransactionAttributeSource(interceptor.getTransactionAttributeSource());
 	}
 
 	/**
@@ -81,6 +80,7 @@ public class TransactionAttributeSourceAdvisor extends AbstractPointcutAdvisor {
 
 	@Override
 	public Advice getAdvice() {
+		Assert.state(this.transactionInterceptor != null, "No TransactionInterceptor set");
 		return this.transactionInterceptor;
 	}
 

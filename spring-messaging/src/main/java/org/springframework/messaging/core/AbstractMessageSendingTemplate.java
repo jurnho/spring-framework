@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
@@ -36,13 +37,15 @@ import org.springframework.util.Assert;
  * @author Mark Fisher
  * @author Rossen Stoyanchev
  * @author Stephane Nicoll
+ * @author Juergen Hoeller
  * @since 4.0
+ * @param <D> the destination type
  */
 public abstract class AbstractMessageSendingTemplate<D> implements MessageSendingOperations<D> {
 
 	/**
 	 * Name of the header that can be set to provide further information
-	 * (e.g. a {@code MethodParameter} instance) about the origin of the
+	 * (for example, a {@code MethodParameter} instance) about the origin of the
 	 * payload, to be taken into account as a conversion hint.
 	 * @since 4.2
 	 */
@@ -51,9 +54,9 @@ public abstract class AbstractMessageSendingTemplate<D> implements MessageSendin
 
 	protected final Log logger = LogFactory.getLog(getClass());
 
-	private volatile D defaultDestination;
+	private @Nullable D defaultDestination;
 
-	private volatile MessageConverter converter = new SimpleMessageConverter();
+	private MessageConverter converter = new SimpleMessageConverter();
 
 
 	/**
@@ -61,14 +64,14 @@ public abstract class AbstractMessageSendingTemplate<D> implements MessageSendin
 	 * a destination argument. If a default destination is not configured, send methods
 	 * without a destination argument will raise an exception if invoked.
 	 */
-	public void setDefaultDestination(D defaultDestination) {
+	public void setDefaultDestination(@Nullable D defaultDestination) {
 		this.defaultDestination = defaultDestination;
 	}
 
 	/**
 	 * Return the configured default destination.
 	 */
-	public D getDefaultDestination() {
+	public @Nullable D getDefaultDestination() {
 		return this.defaultDestination;
 	}
 
@@ -78,7 +81,7 @@ public abstract class AbstractMessageSendingTemplate<D> implements MessageSendin
 	 * @param messageConverter the message converter to use
 	 */
 	public void setMessageConverter(MessageConverter messageConverter) {
-		Assert.notNull(messageConverter, "'messageConverter' must not be null");
+		Assert.notNull(messageConverter, "MessageConverter must not be null");
 		this.converter = messageConverter;
 	}
 
@@ -105,73 +108,84 @@ public abstract class AbstractMessageSendingTemplate<D> implements MessageSendin
 		doSend(destination, message);
 	}
 
-	protected abstract void doSend(D destination, Message<?> message);
-
-
 	@Override
 	public void convertAndSend(Object payload) throws MessagingException {
-		convertAndSend(payload, null);
+		convertAndSend(payload, null, null);
 	}
 
 	@Override
 	public void convertAndSend(D destination, Object payload) throws MessagingException {
-		convertAndSend(destination, payload, (Map<String, Object>) null);
+		convertAndSend(destination, payload, null, null);
 	}
 
 	@Override
-	public void convertAndSend(D destination, Object payload, Map<String, Object> headers) throws MessagingException {
+	public void convertAndSend(Object payload, Map<String, Object> headers) throws MessagingException {
+		convertAndSend(payload, headers, null);
+	}
+
+	@Override
+	public void convertAndSend(D destination, Object payload, @Nullable Map<String, Object> headers)
+			throws MessagingException {
+
 		convertAndSend(destination, payload, headers, null);
 	}
 
 	@Override
-	public void convertAndSend(Object payload, MessagePostProcessor postProcessor) throws MessagingException {
-		convertAndSend(getRequiredDefaultDestination(), payload, postProcessor);
+	public void convertAndSend(Object payload, @Nullable MessagePostProcessor postProcessor)
+			throws MessagingException {
+
+		convertAndSend(payload, null, postProcessor);
 	}
 
 	@Override
-	public void convertAndSend(D destination, Object payload, MessagePostProcessor postProcessor)
+	public void convertAndSend(D destination, Object payload, @Nullable MessagePostProcessor postProcessor)
 			throws MessagingException {
 
 		convertAndSend(destination, payload, null, postProcessor);
 	}
 
 	@Override
-	public void convertAndSend(D destination, Object payload, Map<String, Object> headers,
-			MessagePostProcessor postProcessor) throws MessagingException {
+	public void convertAndSend(Object payload, @Nullable Map<String, Object> headers,
+			@Nullable MessagePostProcessor postProcessor) throws MessagingException {
+
+		convertAndSend(getRequiredDefaultDestination(), payload, headers, postProcessor);
+	}
+
+	@Override
+	public void convertAndSend(D destination, Object payload, @Nullable Map<String, Object> headers,
+			@Nullable MessagePostProcessor postProcessor) throws MessagingException {
 
 		Message<?> message = doConvert(payload, headers, postProcessor);
 		send(destination, message);
 	}
 
+
 	/**
 	 * Convert the given Object to serialized form, possibly using a
 	 * {@link MessageConverter}, wrap it as a message with the given
-	 * headers and apply the given post processor.
+	 * headers and apply the given post-processor.
 	 * @param payload the Object to use as payload
-	 * @param headers headers for the message to send
-	 * @param postProcessor the post processor to apply to the message
+	 * @param headers the headers for the message to send
+	 * @param postProcessor the post-processor to apply to the message
 	 * @return the converted message
 	 */
-	protected Message<?> doConvert(Object payload, Map<String, Object> headers, MessagePostProcessor postProcessor) {
+	protected Message<?> doConvert(Object payload, @Nullable Map<String, Object> headers,
+			@Nullable MessagePostProcessor postProcessor) {
+
 		MessageHeaders messageHeaders = null;
 		Object conversionHint = (headers != null ? headers.get(CONVERSION_HINT_HEADER) : null);
 
 		Map<String, Object> headersToUse = processHeadersToSend(headers);
 		if (headersToUse != null) {
-			if (headersToUse instanceof MessageHeaders) {
-				messageHeaders = (MessageHeaders) headersToUse;
-			}
-			else {
-				messageHeaders = new MessageHeaders(headersToUse);
-			}
+			messageHeaders = (headersToUse instanceof MessageHeaders mh ? mh : new MessageHeaders(headersToUse));
 		}
 
 		MessageConverter converter = getMessageConverter();
-		Message<?> message = (converter instanceof SmartMessageConverter ?
-				((SmartMessageConverter) converter).toMessage(payload, messageHeaders, conversionHint) :
+		Message<?> message = (converter instanceof SmartMessageConverter smartMessageConverter ?
+				smartMessageConverter.toMessage(payload, messageHeaders, conversionHint) :
 				converter.toMessage(payload, messageHeaders));
 		if (message == null) {
-			String payloadType = (payload != null ? payload.getClass().getName() : null);
+			String payloadType = payload.getClass().getName();
 			Object contentType = (messageHeaders != null ? messageHeaders.get(MessageHeaders.CONTENT_TYPE) : null);
 			throw new MessageConversionException("Unable to convert payload with type='" + payloadType +
 					"', contentType='" + contentType + "', converter=[" + getMessageConverter() + "]");
@@ -189,8 +203,15 @@ public abstract class AbstractMessageSendingTemplate<D> implements MessageSendin
 	 * @param headers the headers to send (or {@code null} if none)
 	 * @return the actual headers to send (or {@code null} if none)
 	 */
-	protected Map<String, Object> processHeadersToSend(Map<String, Object> headers) {
+	protected @Nullable Map<String, Object> processHeadersToSend(@Nullable Map<String, Object> headers) {
 		return headers;
 	}
+
+	/**
+	 * Actually send the given message to the given destination.
+	 * @param destination the target destination
+	 * @param message the message to send
+	 */
+	protected abstract void doSend(D destination, Message<?> message);
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,11 +20,13 @@ import java.lang.reflect.Method;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -36,7 +38,9 @@ import org.springframework.util.StringUtils;
  * @see ProfileValueSource
  * @see ProfileValueSourceConfiguration
  * @see IfProfileValue
+ * @deprecated since Spring Framework 7.0 with no replacement
  */
+@Deprecated(since = "7.0")
 public abstract class ProfileValueUtils {
 
 	private static final Log logger = LogFactory.getLog(ProfileValueUtils.class);
@@ -52,7 +56,7 @@ public abstract class ProfileValueUtils {
 	 * &#064;ProfileValueSourceConfiguration} is not present on the specified
 	 * class or if a custom {@link ProfileValueSource} is not declared, the
 	 * default {@link SystemProfileValueSource} will be returned instead.
-	 * @param testClass The test class for which the ProfileValueSource should
+	 * @param testClass the test class for which the ProfileValueSource should
 	 * be retrieved
 	 * @return the configured (or default) ProfileValueSource for the specified
 	 * class
@@ -75,6 +79,7 @@ public abstract class ProfileValueUtils {
 		}
 		else {
 			profileValueSourceType = (Class<? extends ProfileValueSource>) AnnotationUtils.getDefaultValue(annotationType);
+			Assert.state(profileValueSourceType != null, "No default ProfileValueSource class");
 		}
 		if (logger.isDebugEnabled()) {
 			logger.debug("Retrieved ProfileValueSource type [" + profileValueSourceType + "] for class [" +
@@ -87,7 +92,7 @@ public abstract class ProfileValueUtils {
 		}
 		else {
 			try {
-				profileValueSource = profileValueSourceType.newInstance();
+				profileValueSource = ReflectionUtils.accessibleConstructor(profileValueSourceType).newInstance();
 			}
 			catch (Exception ex) {
 				if (logger.isWarnEnabled()) {
@@ -175,7 +180,7 @@ public abstract class ProfileValueUtils {
 	 * {@code null}
 	 */
 	private static boolean isTestEnabledInThisEnvironment(ProfileValueSource profileValueSource,
-			IfProfileValue ifProfileValue) {
+			@Nullable IfProfileValue ifProfileValue) {
 
 		if (ifProfileValue == null) {
 			return true;
@@ -184,10 +189,8 @@ public abstract class ProfileValueUtils {
 		String environmentValue = profileValueSource.get(ifProfileValue.name());
 		String[] annotatedValues = ifProfileValue.values();
 		if (StringUtils.hasLength(ifProfileValue.value())) {
-			if (annotatedValues.length > 0) {
-				throw new IllegalArgumentException("Setting both the 'value' and 'values' attributes " +
+			Assert.isTrue(annotatedValues.length == 0, "Setting both the 'value' and 'values' attributes " +
 						"of @IfProfileValue is not allowed: choose one or the other.");
-			}
 			annotatedValues = new String[] { ifProfileValue.value() };
 		}
 

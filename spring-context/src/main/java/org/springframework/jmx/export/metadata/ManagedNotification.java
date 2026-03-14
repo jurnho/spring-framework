@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.jmx.export.metadata;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.util.StringUtils;
 
@@ -26,11 +28,11 @@ import org.springframework.util.StringUtils;
  */
 public class ManagedNotification {
 
-	private String[] notificationTypes;
+	private String @Nullable [] notificationTypes;
 
-	private String name;
+	private @Nullable String name;
 
-	private String description;
+	private @Nullable String description;
 
 
 	/**
@@ -44,42 +46,42 @@ public class ManagedNotification {
 	/**
 	 * Set a list of notification types.
 	 */
-	public void setNotificationTypes(String... notificationTypes) {
+	public void setNotificationTypes(String @Nullable ... notificationTypes) {
 		this.notificationTypes = notificationTypes;
 	}
 
 	/**
 	 * Return the list of notification types.
 	 */
-	public String[] getNotificationTypes() {
+	public String @Nullable [] getNotificationTypes() {
 		return this.notificationTypes;
 	}
 
 	/**
 	 * Set the name of this notification.
 	 */
-	public void setName(String name) {
+	public void setName(@Nullable String name) {
 		this.name = name;
 	}
 
 	/**
 	 * Return the name of this notification.
 	 */
-	public String getName() {
+	public @Nullable String getName() {
 		return this.name;
 	}
 
 	/**
 	 * Set a description for this notification.
 	 */
-	public void setDescription(String description) {
+	public void setDescription(@Nullable String description) {
 		this.description = description;
 	}
 
 	/**
 	 * Return a description for this notification.
 	 */
-	public String getDescription() {
+	public @Nullable String getDescription() {
 		return this.description;
 	}
 

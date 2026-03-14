@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.beans.factory.parsing;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeanMetadataElement;
 import org.springframework.core.io.Resource;
@@ -31,9 +33,9 @@ public class ImportDefinition implements BeanMetadataElement {
 
 	private final String importedResource;
 
-	private final Resource[] actualResources;
+	private final Resource @Nullable [] actualResources;
 
-	private final Object source;
+	private final @Nullable Object source;
 
 
 	/**
@@ -49,7 +51,7 @@ public class ImportDefinition implements BeanMetadataElement {
 	 * @param importedResource the location of the imported resource
 	 * @param source the source object (may be {@code null})
 	 */
-	public ImportDefinition(String importedResource, Object source) {
+	public ImportDefinition(String importedResource, @Nullable Object source) {
 		this(importedResource, null, source);
 	}
 
@@ -58,7 +60,7 @@ public class ImportDefinition implements BeanMetadataElement {
 	 * @param importedResource the location of the imported resource
 	 * @param source the source object (may be {@code null})
 	 */
-	public ImportDefinition(String importedResource, Resource[] actualResources, Object source) {
+	public ImportDefinition(String importedResource, Resource @Nullable [] actualResources, @Nullable Object source) {
 		Assert.notNull(importedResource, "Imported resource must not be null");
 		this.importedResource = importedResource;
 		this.actualResources = actualResources;
@@ -73,12 +75,12 @@ public class ImportDefinition implements BeanMetadataElement {
 		return this.importedResource;
 	}
 
-	public final Resource[] getActualResources() {
+	public final Resource @Nullable [] getActualResources() {
 		return this.actualResources;
 	}
 
 	@Override
-	public final Object getSource() {
+	public final @Nullable Object getSource() {
 		return this.source;
 	}
 

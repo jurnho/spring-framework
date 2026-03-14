@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,10 +27,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.test.context.SmartContextLoader;
 import org.springframework.util.Assert;
+import org.springframework.util.ClassUtils;
 
 /**
  * Utility methods for {@link SmartContextLoader SmartContextLoaders} that deal
- * with annotated classes (e.g., {@link Configuration @Configuration} classes).
+ * with component classes (for example, {@link Configuration @Configuration} classes).
  *
  * @author Sam Brannen
  * @since 3.2
@@ -60,7 +61,7 @@ public abstract class AnnotationConfigContextLoaderUtils {
 	public static Class<?>[] detectDefaultConfigurationClasses(Class<?> declaringClass) {
 		Assert.notNull(declaringClass, "Declaring class must not be null");
 
-		List<Class<?>> configClasses = new ArrayList<Class<?>>();
+		List<Class<?>> configClasses = new ArrayList<>();
 
 		for (Class<?> candidate : declaringClass.getDeclaredClasses()) {
 			if (isDefaultConfigurationClassCandidate(candidate)) {
@@ -84,7 +85,7 @@ public abstract class AnnotationConfigContextLoaderUtils {
 			}
 		}
 
-		return configClasses.toArray(new Class<?>[configClasses.size()]);
+		return ClassUtils.toClassArray(configClasses);
 	}
 
 	/**
@@ -102,12 +103,11 @@ public abstract class AnnotationConfigContextLoaderUtils {
 	 * @return {@code true} if the supplied class meets the candidate criteria
 	 */
 	private static boolean isDefaultConfigurationClassCandidate(Class<?> clazz) {
-		return (clazz != null && isStaticNonPrivateAndNonFinal(clazz) &&
+		return (isStaticNonPrivateAndNonFinal(clazz) &&
 				AnnotatedElementUtils.hasAnnotation(clazz, Configuration.class));
 	}
 
 	private static boolean isStaticNonPrivateAndNonFinal(Class<?> clazz) {
-		Assert.notNull(clazz, "Class must not be null");
 		int modifiers = clazz.getModifiers();
 		return (Modifier.isStatic(modifiers) && !Modifier.isPrivate(modifiers) && !Modifier.isFinal(modifiers));
 	}

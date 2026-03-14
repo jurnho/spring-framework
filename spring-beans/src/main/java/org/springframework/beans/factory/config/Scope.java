@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.beans.factory.config;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.ObjectFactory;
 
@@ -30,7 +32,7 @@ import org.springframework.beans.factory.ObjectFactory;
  * <p>{@link org.springframework.context.ApplicationContext} implementations
  * such as a {@link org.springframework.web.context.WebApplicationContext}
  * may register additional standard scopes specific to their environment,
- * e.g. {@link org.springframework.web.context.WebApplicationContext#SCOPE_REQUEST "request"}
+ * for example, {@link org.springframework.web.context.WebApplicationContext#SCOPE_REQUEST "request"}
  * and {@link org.springframework.web.context.WebApplicationContext#SCOPE_SESSION "session"},
  * based on this Scope SPI.
  *
@@ -68,6 +70,7 @@ public interface Scope {
 	 * @param objectFactory the {@link ObjectFactory} to use to create the scoped
 	 * object if it is not present in the underlying storage mechanism
 	 * @return the desired object (never {@code null})
+	 * @throws IllegalStateException if the underlying scope is not currently active
 	 */
 	Object get(String name, ObjectFactory<?> objectFactory);
 
@@ -84,9 +87,10 @@ public interface Scope {
 	 * removing an object.
 	 * @param name the name of the object to remove
 	 * @return the removed object, or {@code null} if no object was present
+	 * @throws IllegalStateException if the underlying scope is not currently active
 	 * @see #registerDestructionCallback
 	 */
-	Object remove(String name);
+	@Nullable Object remove(String name);
 
 	/**
 	 * Register a callback to be executed on destruction of the specified
@@ -112,6 +116,7 @@ public interface Scope {
 	 * so it can safely be executed without an enclosing try-catch block.
 	 * Furthermore, the Runnable will usually be serializable, provided
 	 * that its target object is serializable as well.
+	 * @throws IllegalStateException if the underlying scope is not currently active
 	 * @see org.springframework.beans.factory.DisposableBean
 	 * @see org.springframework.beans.factory.support.AbstractBeanDefinition#getDestroyMethodName()
 	 * @see DestructionAwareBeanPostProcessor
@@ -120,26 +125,34 @@ public interface Scope {
 
 	/**
 	 * Resolve the contextual object for the given key, if any.
-	 * E.g. the HttpServletRequest object for key "request".
+	 * For example, the HttpServletRequest object for key "request".
+	 * <p>Since 7.0, this interface method returns {@code null} by default.
 	 * @param key the contextual key
 	 * @return the corresponding object, or {@code null} if none found
+	 * @throws IllegalStateException if the underlying scope is not currently active
 	 */
-	Object resolveContextualObject(String key);
+	default @Nullable Object resolveContextualObject(String key) {
+		return null;
+	}
 
 	/**
 	 * Return the <em>conversation ID</em> for the current underlying scope, if any.
 	 * <p>The exact meaning of the conversation ID depends on the underlying
 	 * storage mechanism. In the case of session-scoped objects, the
 	 * conversation ID would typically be equal to (or derived from) the
-	 * {@link javax.servlet.http.HttpSession#getId() session ID}; in the
+	 * {@link jakarta.servlet.http.HttpSession#getId() session ID}; in the
 	 * case of a custom conversation that sits within the overall session,
 	 * the specific ID for the current conversation would be appropriate.
 	 * <p><b>Note: This is an optional operation.</b> It is perfectly valid to
 	 * return {@code null} in an implementation of this method if the
 	 * underlying storage mechanism has no obvious candidate for such an ID.
+	 * <p>Since 7.0, this interface method returns {@code null} by default.
 	 * @return the conversation ID, or {@code null} if there is no
 	 * conversation ID for the current scope
+	 * @throws IllegalStateException if the underlying scope is not currently active
 	 */
-	String getConversationId();
+	default @Nullable String getConversationId() {
+		return null;
+	}
 
 }

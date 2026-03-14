@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,14 +22,12 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
-import java.time.chrono.ChronoZonedDateTime;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.core.convert.converter.ConverterRegistry;
 import org.springframework.format.datetime.DateFormatterRegistrar;
-import org.springframework.lang.UsesJava8;
 
 /**
  * Installs lower-level type converters required to integrate
@@ -43,8 +41,11 @@ import org.springframework.lang.UsesJava8;
  * @author Juergen Hoeller
  * @since 4.0.1
  */
-@UsesJava8
 final class DateTimeConverters {
+
+	private DateTimeConverters() {
+	}
+
 
 	/**
 	 * Install the converters into the converter registry.
@@ -76,17 +77,15 @@ final class DateTimeConverters {
 	}
 
 	private static ZonedDateTime calendarToZonedDateTime(Calendar source) {
-		if (source instanceof GregorianCalendar) {
-			return ((GregorianCalendar) source).toZonedDateTime();
+		if (source instanceof GregorianCalendar gc) {
+			return gc.toZonedDateTime();
 		}
 		else {
-			return ZonedDateTime.ofInstant(Instant.ofEpochMilli(source.getTimeInMillis()),
-					source.getTimeZone().toZoneId());
+			return Instant.ofEpochMilli(source.getTimeInMillis()).atZone(source.getTimeZone().toZoneId());
 		}
 	}
 
 
-	@UsesJava8
 	private static class LocalDateTimeToLocalDateConverter implements Converter<LocalDateTime, LocalDate> {
 
 		@Override
@@ -96,7 +95,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class LocalDateTimeToLocalTimeConverter implements Converter<LocalDateTime, LocalTime> {
 
 		@Override
@@ -106,7 +104,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class ZonedDateTimeToLocalDateConverter implements Converter<ZonedDateTime, LocalDate> {
 
 		@Override
@@ -116,7 +113,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class ZonedDateTimeToLocalTimeConverter implements Converter<ZonedDateTime, LocalTime> {
 
 		@Override
@@ -126,7 +122,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class ZonedDateTimeToLocalDateTimeConverter implements Converter<ZonedDateTime, LocalDateTime> {
 
 		@Override
@@ -135,7 +130,6 @@ final class DateTimeConverters {
 		}
 	}
 
-	@UsesJava8
 	private static class ZonedDateTimeToOffsetDateTimeConverter implements Converter<ZonedDateTime, OffsetDateTime> {
 
 		@Override
@@ -145,18 +139,15 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class ZonedDateTimeToInstantConverter implements Converter<ZonedDateTime, Instant> {
 
 		@Override
 		public Instant convert(ZonedDateTime source) {
-			// Explicit cast to interface necessary in order to call Java 8 default method from -source 1.6
-			return ((ChronoZonedDateTime) source).toInstant();
+			return source.toInstant();
 		}
 	}
 
 
-	@UsesJava8
 	private static class OffsetDateTimeToLocalDateConverter implements Converter<OffsetDateTime, LocalDate> {
 
 		@Override
@@ -166,7 +157,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class OffsetDateTimeToLocalTimeConverter implements Converter<OffsetDateTime, LocalTime> {
 
 		@Override
@@ -176,7 +166,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class OffsetDateTimeToLocalDateTimeConverter implements Converter<OffsetDateTime, LocalDateTime> {
 
 		@Override
@@ -186,7 +175,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class OffsetDateTimeToZonedDateTimeConverter implements Converter<OffsetDateTime, ZonedDateTime> {
 
 		@Override
@@ -196,7 +184,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class OffsetDateTimeToInstantConverter implements Converter<OffsetDateTime, Instant> {
 
 		@Override
@@ -206,7 +193,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class CalendarToZonedDateTimeConverter implements Converter<Calendar, ZonedDateTime> {
 
 		@Override
@@ -216,7 +202,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class CalendarToOffsetDateTimeConverter implements Converter<Calendar, OffsetDateTime> {
 
 		@Override
@@ -226,7 +211,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class CalendarToLocalDateConverter implements Converter<Calendar, LocalDate> {
 
 		@Override
@@ -236,7 +220,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class CalendarToLocalTimeConverter implements Converter<Calendar, LocalTime> {
 
 		@Override
@@ -246,7 +229,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class CalendarToLocalDateTimeConverter implements Converter<Calendar, LocalDateTime> {
 
 		@Override
@@ -256,18 +238,15 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class CalendarToInstantConverter implements Converter<Calendar, Instant> {
 
 		@Override
 		public Instant convert(Calendar source) {
-			// Explicit cast to interface necessary in order to call Java 8 default method from -source 1.6
-			return ((ChronoZonedDateTime) calendarToZonedDateTime(source)).toInstant();
+			return calendarToZonedDateTime(source).toInstant();
 		}
 	}
 
 
-	@UsesJava8
 	private static class LongToInstantConverter implements Converter<Long, Instant> {
 
 		@Override
@@ -277,7 +256,6 @@ final class DateTimeConverters {
 	}
 
 
-	@UsesJava8
 	private static class InstantToLongConverter implements Converter<Instant, Long> {
 
 		@Override

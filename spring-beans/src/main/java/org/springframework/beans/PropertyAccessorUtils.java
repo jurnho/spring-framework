@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.beans;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * Utility methods for classes that perform bean property access
@@ -42,7 +44,7 @@ public abstract class PropertyAccessorUtils {
 	 * @param propertyPath the property path to check
 	 * @return whether the path indicates an indexed or nested property
 	 */
-	public static boolean isNestedOrIndexedProperty(String propertyPath) {
+	public static boolean isNestedOrIndexedProperty(@Nullable String propertyPath) {
 		if (propertyPath == null) {
 			return false;
 		}
@@ -89,14 +91,14 @@ public abstract class PropertyAccessorUtils {
 		int i = (last ? length - 1 : 0);
 		while (last ? i >= 0 : i < length) {
 			switch (propertyPath.charAt(i)) {
-				case PropertyAccessor.PROPERTY_KEY_PREFIX_CHAR:
-				case PropertyAccessor.PROPERTY_KEY_SUFFIX_CHAR:
+				case PropertyAccessor.PROPERTY_KEY_PREFIX_CHAR, PropertyAccessor.PROPERTY_KEY_SUFFIX_CHAR -> {
 					inKey = !inKey;
-					break;
-				case PropertyAccessor.NESTED_PROPERTY_SEPARATOR_CHAR:
+				}
+				case PropertyAccessor.NESTED_PROPERTY_SEPARATOR_CHAR -> {
 					if (!inKey) {
 						return i;
 					}
+				}
 			}
 			if (last) {
 				i--;
@@ -132,12 +134,12 @@ public abstract class PropertyAccessorUtils {
 	/**
 	 * Determine the canonical name for the given property path.
 	 * Removes surrounding quotes from map keys:<br>
-	 * {@code map['key']} -> {@code map[key]}<br>
-	 * {@code map["key"]} -> {@code map[key]}
+	 * {@code map['key']} &rarr; {@code map[key]}<br>
+	 * {@code map["key"]} &rarr; {@code map[key]}
 	 * @param propertyName the bean property path
 	 * @return the canonical representation of the property path
 	 */
-	public static String canonicalPropertyName(String propertyName) {
+	public static String canonicalPropertyName(@Nullable String propertyName) {
 		if (propertyName == null) {
 			return "";
 		}
@@ -171,7 +173,7 @@ public abstract class PropertyAccessorUtils {
 	 * (as array of the same size)
 	 * @see #canonicalPropertyName(String)
 	 */
-	public static String[] canonicalPropertyNames(String[] propertyNames) {
+	public static String @Nullable [] canonicalPropertyNames(String @Nullable [] propertyNames) {
 		if (propertyNames == null) {
 			return null;
 		}

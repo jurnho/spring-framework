@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +19,8 @@ package org.springframework.beans.propertyeditors;
 import java.beans.PropertyEditorSupport;
 import java.io.IOException;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceEditor;
 import org.springframework.core.io.support.EncodedResource;
@@ -27,7 +29,7 @@ import org.springframework.util.Assert;
 /**
  * One-way PropertyEditor which can convert from a text String to a
  * {@code java.io.Reader}, interpreting the given String as a Spring
- * resource location (e.g. a URL String).
+ * resource location (for example, a URL String).
  *
  * <p>Supports Spring-style URL notation: any fully qualified standard URL
  * ("file:", "http:", etc.) and Spring's special "classpath:" pseudo-URL.
@@ -47,16 +49,14 @@ public class ReaderEditor extends PropertyEditorSupport {
 
 
 	/**
-	 * Create a new ReaderEditor,
-	 * using the default ResourceEditor underneath.
+	 * Create a new ReaderEditor, using the default ResourceEditor underneath.
 	 */
 	public ReaderEditor() {
 		this.resourceEditor = new ResourceEditor();
 	}
 
 	/**
-	 * Create a new ReaderEditor,
-	 * using the given ResourceEditor underneath.
+	 * Create a new ReaderEditor, using the given ResourceEditor underneath.
 	 * @param resourceEditor the ResourceEditor to use
 	 */
 	public ReaderEditor(ResourceEditor resourceEditor) {
@@ -82,7 +82,7 @@ public class ReaderEditor extends PropertyEditorSupport {
 	 * there is no appropriate text representation.
 	 */
 	@Override
-	public String getAsText() {
+	public @Nullable String getAsText() {
 		return null;
 	}
 

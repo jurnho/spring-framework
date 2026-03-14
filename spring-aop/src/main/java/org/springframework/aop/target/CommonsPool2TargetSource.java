@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,6 +22,9 @@ import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.util.Assert;
 
 /**
  * {@link org.springframework.aop.TargetSource} implementation that holds
@@ -43,8 +46,6 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
  * meaningful validation. All exposed Commons Pool properties use the
  * corresponding Commons Pool defaults.
  *
- * <p>Compatible with Apache Commons Pool 2.4, as of Spring 4.2.
- *
  * @author Rod Johnson
  * @author Rob Harrop
  * @author Juergen Hoeller
@@ -60,7 +61,7 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
  * @see #setTimeBetweenEvictionRunsMillis
  * @see #setMinEvictableIdleTimeMillis
  */
-@SuppressWarnings({"rawtypes", "unchecked", "serial"})
+@SuppressWarnings({"rawtypes", "unchecked", "serial", "deprecation"})
 public class CommonsPool2TargetSource extends AbstractPoolingTargetSource implements PooledObjectFactory<Object> {
 
 	private int maxIdle = GenericObjectPoolConfig.DEFAULT_MAX_IDLE;
@@ -76,9 +77,9 @@ public class CommonsPool2TargetSource extends AbstractPoolingTargetSource implem
 	private boolean blockWhenExhausted = GenericObjectPoolConfig.DEFAULT_BLOCK_WHEN_EXHAUSTED;
 
 	/**
-	 * The Apache Commons {@code ObjectPool} used to pool target objects
+	 * The Apache Commons {@code ObjectPool} used to pool target objects.
 	 */
-	private ObjectPool pool;
+	private @Nullable ObjectPool pool;
 
 
 	/**
@@ -177,7 +178,7 @@ public class CommonsPool2TargetSource extends AbstractPoolingTargetSource implem
 	}
 
 	/**
-	 * Set whether the call should bock when the pool is exhausted.
+	 * Set whether the call should block when the pool is exhausted.
 	 */
 	public void setBlockWhenExhausted(boolean blockWhenExhausted) {
 		this.blockWhenExhausted = blockWhenExhausted;
@@ -227,6 +228,7 @@ public class CommonsPool2TargetSource extends AbstractPoolingTargetSource implem
 	 */
 	@Override
 	public Object getTarget() throws Exception {
+		Assert.state(this.pool != null, "No Commons ObjectPool available");
 		return this.pool.borrowObject();
 	}
 
@@ -235,17 +237,19 @@ public class CommonsPool2TargetSource extends AbstractPoolingTargetSource implem
 	 */
 	@Override
 	public void releaseTarget(Object target) throws Exception {
-		this.pool.returnObject(target);
+		if (this.pool != null) {
+			this.pool.returnObject(target);
+		}
 	}
 
 	@Override
 	public int getActiveCount() throws UnsupportedOperationException {
-		return this.pool.getNumActive();
+		return (this.pool != null ? this.pool.getNumActive() : 0);
 	}
 
 	@Override
 	public int getIdleCount() throws UnsupportedOperationException {
-		return this.pool.getNumIdle();
+		return (this.pool != null ? this.pool.getNumIdle() : 0);
 	}
 
 
@@ -254,8 +258,10 @@ public class CommonsPool2TargetSource extends AbstractPoolingTargetSource implem
 	 */
 	@Override
 	public void destroy() throws Exception {
-		logger.debug("Closing Commons ObjectPool");
-		this.pool.close();
+		if (this.pool != null) {
+			logger.debug("Closing Commons ObjectPool");
+			this.pool.close();
+		}
 	}
 
 
@@ -265,7 +271,7 @@ public class CommonsPool2TargetSource extends AbstractPoolingTargetSource implem
 
 	@Override
 	public PooledObject<Object> makeObject() throws Exception {
-		return new DefaultPooledObject<Object>(newPrototypeInstance());
+		return new DefaultPooledObject<>(newPrototypeInstance());
 	}
 
 	@Override

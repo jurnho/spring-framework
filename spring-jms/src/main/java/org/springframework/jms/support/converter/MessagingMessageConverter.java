@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,20 +16,24 @@
 
 package org.springframework.jms.support.converter;
 
-import javax.jms.JMSException;
-import javax.jms.Session;
+import java.util.Map;
+
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jms.support.JmsHeaderMapper;
 import org.springframework.jms.support.SimpleJmsHeaderMapper;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
-import org.springframework.messaging.core.AbstractMessagingTemplate;
+import org.springframework.messaging.core.AbstractMessageSendingTemplate;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.util.Assert;
 
 /**
  * Convert a {@link Message} from the messaging abstraction to and from a
- * {@link javax.jms.Message} using an underlying {@link MessageConverter}
+ * {@link jakarta.jms.Message} using an underlying {@link MessageConverter}
  * for the payload and a {@link org.springframework.jms.support.JmsHeaderMapper}
  * to map the JMS headers to and from standard message headers.
  *
@@ -53,12 +57,21 @@ public class MessagingMessageConverter implements MessageConverter, Initializing
 	}
 
 	/**
+	 * Create an instance with the specific payload converter.
+	 * @param payloadConverter the payload converter to use
+	 * @since 4.3.12
+	 */
+	public MessagingMessageConverter(MessageConverter payloadConverter) {
+		this(payloadConverter, new SimpleJmsHeaderMapper());
+	}
+
+	/**
 	 * Create an instance with the specified payload converter and
 	 * header mapper.
 	 */
 	public MessagingMessageConverter(MessageConverter payloadConverter, JmsHeaderMapper headerMapper) {
-		Assert.notNull(payloadConverter, "PayloadConverter must not be null");
-		Assert.notNull(headerMapper, "HeaderMapper must not be null");
+		Assert.notNull(payloadConverter, "'payloadConverter' must not be null");
+		Assert.notNull(headerMapper, "'headerMapper' must not be null");
 		this.payloadConverter = payloadConverter;
 		this.headerMapper = headerMapper;
 	}
@@ -87,98 +100,50 @@ public class MessagingMessageConverter implements MessageConverter, Initializing
 
 
 	@Override
-	public javax.jms.Message toMessage(Object object, Session session) throws JMSException, MessageConversionException {
-		if (!(object instanceof Message)) {
+	public jakarta.jms.Message toMessage(Object object, Session session) throws JMSException, MessageConversionException {
+		if (!(object instanceof Message<?> input)) {
 			throw new IllegalArgumentException("Could not convert [" + object + "] - only [" +
 					Message.class.getName() + "] is handled by this converter");
 		}
-		Message<?> input = (Message<?>) object;
 		MessageHeaders headers = input.getHeaders();
-		Object conversionHint = (headers != null ? headers.get(
-				AbstractMessagingTemplate.CONVERSION_HINT_HEADER) : null);
-		javax.jms.Message reply = createMessageForPayload(input.getPayload(), session, conversionHint);
+		Object conversionHint = headers.get(AbstractMessageSendingTemplate.CONVERSION_HINT_HEADER);
+		jakarta.jms.Message reply = createMessageForPayload(input.getPayload(), session, conversionHint);
 		this.headerMapper.fromHeaders(headers, reply);
 		return reply;
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
-	public Object fromMessage(javax.jms.Message message) throws JMSException, MessageConversionException {
-		if (message == null) {
-			return null;
-		}
-		return new LazyResolutionMessage(message);
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	public Object fromMessage(jakarta.jms.Message message) throws JMSException, MessageConversionException {
+		Map<String, Object> mappedHeaders = extractHeaders(message);
+		Object convertedObject = extractPayload(message);
+		MessageBuilder<Object> builder = (convertedObject instanceof org.springframework.messaging.Message springMessage ?
+				MessageBuilder.fromMessage(springMessage) : MessageBuilder.withPayload(convertedObject));
+		return builder.copyHeadersIfAbsent(mappedHeaders).build();
 	}
 
 	/**
-	 * Extract the payload of the specified {@link javax.jms.Message}.
+	 * Extract the payload of the specified {@link jakarta.jms.Message}.
 	 */
-	protected Object extractPayload(javax.jms.Message message) throws JMSException {
+	protected Object extractPayload(jakarta.jms.Message message) throws JMSException {
 		return this.payloadConverter.fromMessage(message);
-	}
-
-	/**
-	 * Create a JMS message for the specified payload.
-	 * @see MessageConverter#toMessage(Object, Session)
-	 * @deprecated as of 4.3, use {@link #createMessageForPayload(Object, Session, Object)}
-	 */
-	@Deprecated
-	protected javax.jms.Message createMessageForPayload(Object payload, Session session) throws JMSException {
-		return this.payloadConverter.toMessage(payload, session);
 	}
 
 	/**
 	 * Create a JMS message for the specified payload and conversionHint.
 	 * The conversion hint is an extra object passed to the {@link MessageConverter},
-	 * e.g. the associated {@code MethodParameter} (may be {@code null}}.
-	 * @see MessageConverter#toMessage(Object, Session)
+	 * for example, the associated {@code MethodParameter} (may be {@code null}).
 	 * @since 4.3
+	 * @see MessageConverter#toMessage(Object, Session)
 	 */
-	@SuppressWarnings("deprecation")
-	protected javax.jms.Message createMessageForPayload(Object payload, Session session, Object conversionHint)
-			throws JMSException {
+	protected jakarta.jms.Message createMessageForPayload(
+			Object payload, Session session, @Nullable Object conversionHint) throws JMSException {
 
-		return createMessageForPayload(payload, session);
+		return this.payloadConverter.toMessage(payload, session);
 	}
 
-	private MessageHeaders extractHeaders(javax.jms.Message message) {
+	protected final MessageHeaders extractHeaders(jakarta.jms.Message message) {
 		return this.headerMapper.toHeaders(message);
-	}
-
-
-	private class LazyResolutionMessage implements Message<Object> {
-
-		private final javax.jms.Message message;
-
-		private Object payload;
-
-		private MessageHeaders headers;
-
-		public LazyResolutionMessage(javax.jms.Message message) {
-			this.message = message;
-		}
-
-		@Override
-		public Object getPayload() {
-			if (this.payload == null) {
-				try {
-					this.payload = extractPayload(this.message);
-				}
-				catch (JMSException ex) {
-					throw new MessageConversionException(
-							"Failed to extract payload from [" + this.message + "]", ex);
-				}
-			}
-			return this.payload;
-		}
-
-		@Override
-		public MessageHeaders getHeaders() {
-			if (this.headers == null) {
-				this.headers = extractHeaders(this.message);
-			}
-			return this.headers;
-		}
 	}
 
 }

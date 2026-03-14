@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,8 @@ package org.springframework.beans.factory.annotation;
 
 import java.lang.annotation.Annotation;
 import java.util.Set;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanClassLoaderAware;
@@ -50,9 +52,9 @@ public class CustomAutowireConfigurer implements BeanFactoryPostProcessor, BeanC
 
 	private int order = Ordered.LOWEST_PRECEDENCE;  // default: same as non-Ordered
 
-	private Set<?> customQualifierTypes;
+	private @Nullable Set<?> customQualifierTypes;
 
-	private ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
+	private @Nullable ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
 
 
 	public void setOrder(int order) {
@@ -65,7 +67,7 @@ public class CustomAutowireConfigurer implements BeanFactoryPostProcessor, BeanC
 	}
 
 	@Override
-	public void setBeanClassLoader(ClassLoader beanClassLoader) {
+	public void setBeanClassLoader(@Nullable ClassLoader beanClassLoader) {
 		this.beanClassLoader = beanClassLoader;
 	}
 
@@ -88,11 +90,10 @@ public class CustomAutowireConfigurer implements BeanFactoryPostProcessor, BeanC
 	@SuppressWarnings("unchecked")
 	public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
 		if (this.customQualifierTypes != null) {
-			if (!(beanFactory instanceof DefaultListableBeanFactory)) {
+			if (!(beanFactory instanceof DefaultListableBeanFactory dlbf)) {
 				throw new IllegalStateException(
 						"CustomAutowireConfigurer needs to operate on a DefaultListableBeanFactory");
 			}
-			DefaultListableBeanFactory dlbf = (DefaultListableBeanFactory) beanFactory;
 			if (!(dlbf.getAutowireCandidateResolver() instanceof QualifierAnnotationAutowireCandidateResolver)) {
 				dlbf.setAutowireCandidateResolver(new QualifierAnnotationAutowireCandidateResolver());
 			}
@@ -103,8 +104,7 @@ public class CustomAutowireConfigurer implements BeanFactoryPostProcessor, BeanC
 				if (value instanceof Class) {
 					customType = (Class<? extends Annotation>) value;
 				}
-				else if (value instanceof String) {
-					String className = (String) value;
+				else if (value instanceof String className) {
 					customType = (Class<? extends Annotation>) ClassUtils.resolveClassName(className, this.beanClassLoader);
 				}
 				else {

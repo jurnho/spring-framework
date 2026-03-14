@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.context.weaving;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
@@ -42,9 +44,9 @@ import org.springframework.util.Assert;
  */
 public class LoadTimeWeaverAwareProcessor implements BeanPostProcessor, BeanFactoryAware {
 
-	private LoadTimeWeaver loadTimeWeaver;
+	private @Nullable LoadTimeWeaver loadTimeWeaver;
 
-	private BeanFactory beanFactory;
+	private @Nullable BeanFactory beanFactory;
 
 
 	/**
@@ -65,7 +67,7 @@ public class LoadTimeWeaverAwareProcessor implements BeanPostProcessor, BeanFact
 	 * {@link ConfigurableApplicationContext#LOAD_TIME_WEAVER_BEAN_NAME "loadTimeWeaver"}.
 	 * @param loadTimeWeaver the specific {@code LoadTimeWeaver} that is to be used
 	 */
-	public LoadTimeWeaverAwareProcessor(LoadTimeWeaver loadTimeWeaver) {
+	public LoadTimeWeaverAwareProcessor(@Nullable LoadTimeWeaver loadTimeWeaver) {
 		this.loadTimeWeaver = loadTimeWeaver;
 	}
 
@@ -89,7 +91,7 @@ public class LoadTimeWeaverAwareProcessor implements BeanPostProcessor, BeanFact
 
 	@Override
 	public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
-		if (bean instanceof LoadTimeWeaverAware) {
+		if (bean instanceof LoadTimeWeaverAware loadTimeWeaverAware) {
 			LoadTimeWeaver ltw = this.loadTimeWeaver;
 			if (ltw == null) {
 				Assert.state(this.beanFactory != null,
@@ -97,7 +99,7 @@ public class LoadTimeWeaverAwareProcessor implements BeanPostProcessor, BeanFact
 				ltw = this.beanFactory.getBean(
 						ConfigurableApplicationContext.LOAD_TIME_WEAVER_BEAN_NAME, LoadTimeWeaver.class);
 			}
-			((LoadTimeWeaverAware) bean).setLoadTimeWeaver(ltw);
+			loadTimeWeaverAware.setLoadTimeWeaver(ltw);
 		}
 		return bean;
 	}

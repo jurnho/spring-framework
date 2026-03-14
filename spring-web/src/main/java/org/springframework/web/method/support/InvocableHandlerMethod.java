@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,12 +19,31 @@ package org.springframework.web.method.support;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
 
+import kotlin.Unit;
+import kotlin.jvm.JvmClassMappingKt;
+import kotlin.reflect.KClass;
+import kotlin.reflect.KFunction;
+import kotlin.reflect.KParameter;
+import kotlin.reflect.KType;
+import kotlin.reflect.full.KClasses;
+import kotlin.reflect.jvm.KCallablesJvm;
+import kotlin.reflect.jvm.ReflectJvmMapping;
+import org.jspecify.annotations.Nullable;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.SynchronousSink;
+
+import org.springframework.context.MessageSource;
+import org.springframework.core.CoroutinesUtils;
 import org.springframework.core.DefaultParameterNameDiscoverer;
-import org.springframework.core.GenericTypeResolver;
+import org.springframework.core.KotlinDetector;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ParameterNameDiscoverer;
-import org.springframework.util.ReflectionUtils;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.ObjectUtils;
+import org.springframework.validation.method.MethodValidator;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.support.SessionStatus;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -32,26 +51,29 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.HandlerMethod;
 
 /**
- * Provides a method for invoking the handler method for a given request after resolving its
- * method argument values through registered {@link HandlerMethodArgumentResolver}s.
- *
- * <p>Argument resolution often requires a {@link WebDataBinder} for data binding or for type
- * conversion. Use the {@link #setDataBinderFactory(WebDataBinderFactory)} property to supply
- * a binder factory to pass to argument resolvers.
- *
- * <p>Use {@link #setHandlerMethodArgumentResolvers} to customize the list of argument resolvers.
+ * Extension of {@link HandlerMethod} that invokes the underlying method with
+ * argument values resolved from the current HTTP request through a list of
+ * {@link HandlerMethodArgumentResolver}.
  *
  * @author Rossen Stoyanchev
  * @author Juergen Hoeller
+ * @author Sebastien Deleuze
  * @since 3.1
  */
 public class InvocableHandlerMethod extends HandlerMethod {
 
-	private WebDataBinderFactory dataBinderFactory;
+	private static final Object[] EMPTY_ARGS = new Object[0];
 
-	private HandlerMethodArgumentResolverComposite argumentResolvers = new HandlerMethodArgumentResolverComposite();
+	private static final boolean KOTLIN_REFLECT_PRESENT = KotlinDetector.isKotlinReflectPresent();
 
-	private ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
+
+	private HandlerMethodArgumentResolverComposite resolvers = new HandlerMethodArgumentResolverComposite();
+
+	private ParameterNameDiscoverer parameterNameDiscoverer = DefaultParameterNameDiscoverer.getSharedInstance();
+
+	private @Nullable WebDataBinderFactory dataBinderFactory;
+
+	private @Nullable MethodValidator methodValidator;
 
 
 	/**
@@ -69,6 +91,15 @@ public class InvocableHandlerMethod extends HandlerMethod {
 	}
 
 	/**
+	 * Variant of {@link #InvocableHandlerMethod(Object, Method)} that
+	 * also accepts a {@link MessageSource}, for use in subclasses.
+	 * @since 5.3.10
+	 */
+	protected InvocableHandlerMethod(Object bean, Method method, @Nullable MessageSource messageSource) {
+		super(bean, method, messageSource);
+	}
+
+	/**
 	 * Construct a new handler method with the given bean instance, method name and parameters.
 	 * @param bean the object bean
 	 * @param methodName the method name
@@ -83,200 +114,266 @@ public class InvocableHandlerMethod extends HandlerMethod {
 
 
 	/**
-	 * Set the {@link WebDataBinderFactory} to be passed to argument resolvers allowing them to create
-	 * a {@link WebDataBinder} for data binding and type conversion purposes.
-	 * @param dataBinderFactory the data binder factory.
-	 */
-	public void setDataBinderFactory(WebDataBinderFactory dataBinderFactory) {
-		this.dataBinderFactory = dataBinderFactory;
-	}
-
-	/**
-	 * Set {@link HandlerMethodArgumentResolver}s to use to use for resolving method argument values.
+	 * Set {@link HandlerMethodArgumentResolver HandlerMethodArgumentResolvers}
+	 * to use for resolving method argument values.
 	 */
 	public void setHandlerMethodArgumentResolvers(HandlerMethodArgumentResolverComposite argumentResolvers) {
-		this.argumentResolvers = argumentResolvers;
+		this.resolvers = argumentResolvers;
 	}
 
 	/**
 	 * Set the ParameterNameDiscoverer for resolving parameter names when needed
-	 * (e.g. default request attribute name).
+	 * (for example, default request attribute name).
 	 * <p>Default is a {@link org.springframework.core.DefaultParameterNameDiscoverer}.
 	 */
 	public void setParameterNameDiscoverer(ParameterNameDiscoverer parameterNameDiscoverer) {
 		this.parameterNameDiscoverer = parameterNameDiscoverer;
 	}
 
+	/**
+	 * Set the {@link WebDataBinderFactory} to be passed to argument resolvers allowing them
+	 * to create a {@link WebDataBinder} for data binding and type conversion purposes.
+	 */
+	public void setDataBinderFactory(WebDataBinderFactory dataBinderFactory) {
+		this.dataBinderFactory = dataBinderFactory;
+	}
+
+	/**
+	 * Set the {@link MethodValidator} to perform method validation with if the
+	 * controller method {@link #shouldValidateArguments()} or
+	 * {@link #shouldValidateReturnValue()}.
+	 * @since 6.1
+	 */
+	public void setMethodValidator(@Nullable MethodValidator methodValidator) {
+		this.methodValidator = methodValidator;
+	}
+
 
 	/**
 	 * Invoke the method after resolving its argument values in the context of the given request.
-	 * <p>Argument values are commonly resolved through {@link HandlerMethodArgumentResolver}s.
+	 * <p>Argument values are commonly resolved through
+	 * {@link HandlerMethodArgumentResolver HandlerMethodArgumentResolvers}.
 	 * The {@code providedArgs} parameter however may supply argument values to be used directly,
 	 * i.e. without argument resolution. Examples of provided argument values include a
 	 * {@link WebDataBinder}, a {@link SessionStatus}, or a thrown exception instance.
 	 * Provided argument values are checked before argument resolvers.
+	 * <p>Delegates to {@link #getMethodArgumentValues} and calls {@link #doInvoke} with the
+	 * resolved arguments.
 	 * @param request the current request
 	 * @param mavContainer the ModelAndViewContainer for this request
 	 * @param providedArgs "given" arguments matched by type, not resolved
 	 * @return the raw value returned by the invoked method
-	 * @exception Exception raised if no suitable argument resolver can be found,
+	 * @throws Exception raised if no suitable argument resolver can be found,
 	 * or if the method raised an exception
+	 * @see #getMethodArgumentValues
+	 * @see #doInvoke
 	 */
-	public Object invokeForRequest(NativeWebRequest request, ModelAndViewContainer mavContainer,
-			Object... providedArgs) throws Exception {
+	public @Nullable Object invokeForRequest(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+			@Nullable Object... providedArgs) throws Exception {
 
-		Object[] args = getMethodArgumentValues(request, mavContainer, providedArgs);
+		@Nullable Object[] args = getMethodArgumentValues(request, mavContainer, providedArgs);
 		if (logger.isTraceEnabled()) {
-			StringBuilder sb = new StringBuilder("Invoking [");
-			sb.append(getBeanType().getSimpleName()).append(".");
-			sb.append(getMethod().getName()).append("] method with arguments ");
-			sb.append(Arrays.asList(args));
-			logger.trace(sb.toString());
+			logger.trace("Arguments: " + Arrays.toString(args));
 		}
+
+		if (shouldValidateArguments() && this.methodValidator != null) {
+			this.methodValidator.applyArgumentValidation(
+					getBean(), getBridgedMethod(), getMethodParameters(), args, getValidationGroups());
+		}
+
 		Object returnValue = doInvoke(args);
-		if (logger.isTraceEnabled()) {
-			logger.trace("Method [" + getMethod().getName() + "] returned [" + returnValue + "]");
+
+		if (shouldValidateReturnValue() && this.methodValidator != null) {
+			this.methodValidator.applyReturnValueValidation(
+					getBean(), getBridgedMethod(), getReturnType(), returnValue, getValidationGroups());
 		}
+
 		return returnValue;
 	}
 
 	/**
-	 * Get the method argument values for the current request.
+	 * Get the method argument values for the current request, checking the provided
+	 * argument values and falling back to the configured argument resolvers.
+	 * <p>The resulting array will be passed into {@link #doInvoke}.
+	 * @since 5.1.2
 	 */
-	private Object[] getMethodArgumentValues(NativeWebRequest request, ModelAndViewContainer mavContainer,
-			Object... providedArgs) throws Exception {
+	protected @Nullable Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+			@Nullable Object... providedArgs) throws Exception {
 
 		MethodParameter[] parameters = getMethodParameters();
-		Object[] args = new Object[parameters.length];
+		if (ObjectUtils.isEmpty(parameters)) {
+			return EMPTY_ARGS;
+		}
+
+		@Nullable Object[] args = new Object[parameters.length];
 		for (int i = 0; i < parameters.length; i++) {
 			MethodParameter parameter = parameters[i];
 			parameter.initParameterNameDiscovery(this.parameterNameDiscoverer);
-			GenericTypeResolver.resolveParameterType(parameter, getBean().getClass());
-			args[i] = resolveProvidedArgument(parameter, providedArgs);
+			args[i] = findProvidedArgument(parameter, providedArgs);
 			if (args[i] != null) {
 				continue;
 			}
-			if (this.argumentResolvers.supportsParameter(parameter)) {
-				try {
-					args[i] = this.argumentResolvers.resolveArgument(
-							parameter, mavContainer, request, this.dataBinderFactory);
-					continue;
-				}
-				catch (Exception ex) {
-					if (logger.isDebugEnabled()) {
-						logger.debug(getArgumentResolutionErrorMessage("Error resolving argument", i), ex);
-					}
-					throw ex;
-				}
+			if (parameter.getParameterType().equals(HandlerMethod.class) && parameter.isOptional()) {
+				args[i] = null;
+				continue;
 			}
-			if (args[i] == null) {
-				String msg = getArgumentResolutionErrorMessage("No suitable resolver for argument", i);
-				throw new IllegalStateException(msg);
+			if (!this.resolvers.supportsParameter(parameter)) {
+				throw new IllegalStateException(formatArgumentError(parameter, "No suitable resolver"));
+			}
+			try {
+				args[i] = this.resolvers.resolveArgument(parameter, mavContainer, request, this.dataBinderFactory);
+			}
+			catch (Exception ex) {
+				// Leave stack trace for later, exception may actually be resolved and handled...
+				if (logger.isDebugEnabled()) {
+					String exMsg = ex.getMessage();
+					if (exMsg != null && !exMsg.contains(parameter.getExecutable().toGenericString())) {
+						logger.debug(formatArgumentError(parameter, exMsg));
+					}
+				}
+				throw ex;
 			}
 		}
 		return args;
 	}
 
-	private String getArgumentResolutionErrorMessage(String message, int index) {
-		MethodParameter param = getMethodParameters()[index];
-		message += " [" + index + "] [type=" + param.getParameterType().getName() + "]";
-		return getDetailedErrorMessage(message);
-	}
-
-	/**
-	 * Adds HandlerMethod details such as the controller type and method
-	 * signature to the given error message.
-	 * @param message error message to append the HandlerMethod details to
-	 */
-	protected String getDetailedErrorMessage(String message) {
-		StringBuilder sb = new StringBuilder(message).append("\n");
-		sb.append("HandlerMethod details: \n");
-		sb.append("Controller [").append(getBeanType().getName()).append("]\n");
-		sb.append("Method [").append(getBridgedMethod().toGenericString()).append("]\n");
-		return sb.toString();
-	}
-
-	/**
-	 * Attempt to resolve a method parameter from the list of provided argument values.
-	 */
-	private Object resolveProvidedArgument(MethodParameter parameter, Object... providedArgs) {
-		if (providedArgs == null) {
-			return null;
-		}
-		for (Object providedArg : providedArgs) {
-			if (parameter.getParameterType().isInstance(providedArg)) {
-				return providedArg;
-			}
-		}
-		return null;
-	}
-
-
 	/**
 	 * Invoke the handler method with the given argument values.
 	 */
-	protected Object doInvoke(Object... args) throws Exception {
-		ReflectionUtils.makeAccessible(getBridgedMethod());
+	protected @Nullable Object doInvoke(@Nullable Object... args) throws Exception {
+		Method method = getBridgedMethod();
 		try {
-			return getBridgedMethod().invoke(getBean(), args);
+			if (KOTLIN_REFLECT_PRESENT && KotlinDetector.isKotlinType(method.getDeclaringClass())) {
+				if (KotlinDetector.isSuspendingFunction(method)) {
+					return invokeSuspendingFunction(method, getBean(), args);
+				}
+				return KotlinDelegate.invokeFunction(method, getBean(), args);
+			}
+			return method.invoke(getBean(), args);
 		}
 		catch (IllegalArgumentException ex) {
-			assertTargetBean(getBridgedMethod(), getBean(), args);
-			String message = (ex.getMessage() != null ? ex.getMessage() : "Illegal argument");
-			throw new IllegalStateException(getInvocationErrorMessage(message, args), ex);
+			assertTargetBean(method, getBean(), args);
+			String text = (ex.getMessage() == null || ex.getCause() instanceof NullPointerException) ?
+					"Illegal argument" : ex.getMessage();
+			throw new IllegalStateException(formatInvokeError(text, args), ex);
 		}
 		catch (InvocationTargetException ex) {
 			// Unwrap for HandlerExceptionResolvers ...
-			Throwable targetException = ex.getTargetException();
-			if (targetException instanceof RuntimeException) {
-				throw (RuntimeException) targetException;
+			Throwable targetException = ex.getCause();
+			if (targetException instanceof RuntimeException runtimeException) {
+				throw runtimeException;
 			}
-			else if (targetException instanceof Error) {
-				throw (Error) targetException;
+			else if (targetException instanceof Error error) {
+				throw error;
 			}
-			else if (targetException instanceof Exception) {
-				throw (Exception) targetException;
+			else if (targetException instanceof Exception exception) {
+				throw exception;
 			}
 			else {
-				String msg = getInvocationErrorMessage("Failed to invoke controller method", args);
-				throw new IllegalStateException(msg, targetException);
+				throw new IllegalStateException(formatInvokeError("Invocation failure", args), targetException);
 			}
 		}
 	}
 
 	/**
-	 * Assert that the target bean class is an instance of the class where the given
-	 * method is declared. In some cases the actual controller instance at request-
-	 * processing time may be a JDK dynamic proxy (lazy initialization, prototype
-	 * beans, and others). {@code @Controller}'s that require proxying should prefer
-	 * class-based proxy mechanisms.
+	 * Invoke the given Kotlin coroutine suspended function.
+	 * <p>The default implementation invokes
+	 * {@link CoroutinesUtils#invokeSuspendingFunction(Method, Object, Object...)},
+	 * but subclasses can override this method to use
+	 * {@link CoroutinesUtils#invokeSuspendingFunction(kotlin.coroutines.CoroutineContext, Method, Object, Object...)}
+	 * instead.
+	 * @since 6.0
 	 */
-	private void assertTargetBean(Method method, Object targetBean, Object[] args) {
-		Class<?> methodDeclaringClass = method.getDeclaringClass();
-		Class<?> targetBeanClass = targetBean.getClass();
-		if (!methodDeclaringClass.isAssignableFrom(targetBeanClass)) {
-			String msg = "The mapped controller method class '" + methodDeclaringClass.getName() +
-					"' is not an instance of the actual controller bean class '" +
-					targetBeanClass.getName() + "'. If the controller requires proxying " +
-					"(e.g. due to @Transactional), please use class-based proxying.";
-			throw new IllegalStateException(getInvocationErrorMessage(msg, args));
-		}
+	protected Object invokeSuspendingFunction(Method method, Object target, @Nullable Object[] args) {
+		Object result = CoroutinesUtils.invokeSuspendingFunction(method, target, args);
+		return (result instanceof Mono<?> mono ? mono.handle(KotlinDelegate::handleResult) : result);
 	}
 
-	private String getInvocationErrorMessage(String message, Object[] resolvedArgs) {
-		StringBuilder sb = new StringBuilder(getDetailedErrorMessage(message));
-		sb.append("Resolved arguments: \n");
-		for (int i = 0; i < resolvedArgs.length; i++) {
-			sb.append("[").append(i).append("] ");
-			if (resolvedArgs[i] == null) {
-				sb.append("[null] \n");
+
+	/**
+	 * Inner class to avoid a hard dependency on Kotlin at runtime.
+	 */
+	private static class KotlinDelegate {
+
+		@SuppressWarnings("DataFlowIssue")
+		public static @Nullable Object invokeFunction(Method method, Object target, @Nullable Object[] args) throws
+				InvocationTargetException, IllegalAccessException, NoSuchMethodException {
+
+			KFunction<?> function = ReflectJvmMapping.getKotlinFunction(method);
+			// For property accessors
+			if (function == null) {
+				return method.invoke(target, args);
+			}
+			if (!KCallablesJvm.isAccessible(function)) {
+				KCallablesJvm.setAccessible(function, true);
+			}
+			Map<KParameter, Object> argMap = CollectionUtils.newHashMap(args.length + 1);
+			int index = 0;
+			for (KParameter parameter : function.getParameters()) {
+				switch (parameter.getKind()) {
+					case INSTANCE -> argMap.put(parameter, target);
+					case VALUE, EXTENSION_RECEIVER -> {
+						Object arg = args[index];
+						if (!(parameter.isOptional() && arg == null)) {
+							KType type = parameter.getType();
+							if (!(type.isMarkedNullable() && arg == null) &&
+									type.getClassifier() instanceof KClass<?> kClass &&
+									KotlinDetector.isInlineClass(JvmClassMappingKt.getJavaClass(kClass))) {
+								arg = box(kClass, arg);
+							}
+							argMap.put(parameter, arg);
+						}
+						index++;
+					}
+				}
+			}
+			Object result = function.callBy(argMap);
+			if (result != null && KotlinDetector.isInlineClass(result.getClass())) {
+				result = unbox(result);
+			}
+			return (result == Unit.INSTANCE ? null : result);
+		}
+
+		private static Object box(KClass<?> kClass, @Nullable Object arg) {
+			KFunction<?> constructor = Objects.requireNonNull(KClasses.getPrimaryConstructor(kClass));
+			KType type = constructor.getParameters().get(0).getType();
+			if (!(type.isMarkedNullable() && arg == null) &&
+					type.getClassifier() instanceof KClass<?> parameterClass &&
+					KotlinDetector.isInlineClass(JvmClassMappingKt.getJavaClass(parameterClass))) {
+				arg = box(parameterClass, arg);
+			}
+			if (!KCallablesJvm.isAccessible(constructor)) {
+				KCallablesJvm.setAccessible(constructor, true);
+			}
+			return constructor.call(arg);
+		}
+
+		private static void handleResult(Object result, SynchronousSink<Object> sink) {
+			if (KotlinDetector.isInlineClass(result.getClass())) {
+				try {
+					Object unboxed = unbox(result);
+					if (unboxed != Unit.INSTANCE) {
+						sink.next(unboxed);
+					}
+					sink.complete();
+				}
+				catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException ex) {
+					sink.error(ex);
+				}
 			}
 			else {
-				sb.append("[type=").append(resolvedArgs[i].getClass().getName()).append("] ");
-				sb.append("[value=").append(resolvedArgs[i]).append("]\n");
+				sink.next(result);
+				sink.complete();
 			}
 		}
-		return sb.toString();
+
+		private static Object unbox(Object result) throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
+			Object unboxed = result.getClass().getDeclaredMethod("unbox-impl").invoke(result);
+			if (KotlinDetector.isInlineClass(unboxed.getClass())) {
+				return unbox(unboxed);
+			}
+			return unboxed;
+		}
 	}
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2009 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,10 @@
 
 package org.springframework.jmx.export.metadata;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.jmx.support.MetricType;
+import org.springframework.util.Assert;
 
 /**
  * Metadata that indicates to expose a given bean property as a JMX attribute,
@@ -29,44 +32,44 @@ import org.springframework.jmx.support.MetricType;
  */
 public class ManagedMetric extends AbstractJmxAttribute {
 
-	private String category = "";
+	private @Nullable String category;
 
-	private String displayName = "";
+	private @Nullable String displayName;
 
 	private MetricType metricType = MetricType.GAUGE;
 
 	private int persistPeriod = -1;
 
-	private String persistPolicy = "";
+	private @Nullable String persistPolicy;
 
-	private String unit = "";
+	private @Nullable String unit;
 
 
 	/**
 	 * The category of this metric (ex. throughput, performance, utilization).
 	 */
-	public void setCategory(String category) {
+	public void setCategory(@Nullable String category) {
 		this.category = category;
 	}
 
 	/**
 	 * The category of this metric (ex. throughput, performance, utilization).
 	 */
-	public String getCategory() {
+	public @Nullable String getCategory() {
 		return this.category;
 	}
 
 	/**
 	 * A display name for this metric.
 	 */
-	public void setDisplayName(String displayName) {
+	public void setDisplayName(@Nullable String displayName) {
 		this.displayName = displayName;
 	}
 
 	/**
 	 * A display name for this metric.
 	 */
-	public String getDisplayName() {
+	public @Nullable String getDisplayName() {
 		return this.displayName;
 	}
 
@@ -74,6 +77,7 @@ public class ManagedMetric extends AbstractJmxAttribute {
 	 * A description of how this metric's values change over time.
 	 */
 	public void setMetricType(MetricType metricType) {
+		Assert.notNull(metricType, "MetricType must not be null");
 		this.metricType = metricType;
 	}
 
@@ -101,28 +105,28 @@ public class ManagedMetric extends AbstractJmxAttribute {
 	/**
 	 * The persist policy for this metric.
 	 */
-	public void setPersistPolicy(String persistPolicy) {
+	public void setPersistPolicy(@Nullable String persistPolicy) {
 		this.persistPolicy = persistPolicy;
 	}
 
 	/**
 	 * The persist policy for this metric.
 	 */
-	public String getPersistPolicy() {
+	public @Nullable String getPersistPolicy() {
 		return this.persistPolicy;
 	}
 
 	/**
 	 * The expected unit of measurement values.
 	 */
-	public void setUnit(String unit) {
+	public void setUnit(@Nullable String unit) {
 		this.unit = unit;
 	}
 
 	/**
 	 * The expected unit of measurement values.
 	 */
-	public String getUnit() {
+	public @Nullable String getUnit() {
 		return this.unit;
 	}
 

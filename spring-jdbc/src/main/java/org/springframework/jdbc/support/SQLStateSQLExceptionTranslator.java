@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,18 @@
 
 package org.springframework.jdbc.support;
 
+import java.sql.BatchUpdateException;
 import java.sql.SQLException;
-import java.util.HashSet;
 import java.util.Set;
 
-import org.springframework.dao.ConcurrencyFailureException;
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.jdbc.BadSqlGrammarException;
@@ -37,85 +41,125 @@ import org.springframework.jdbc.BadSqlGrammarException;
  * does not require special initialization (no database vendor detection, etc.).
  * For more precise translation, consider {@link SQLErrorCodeSQLExceptionTranslator}.
  *
+ * <p>This translator is commonly used as a {@link #setFallbackTranslator fallback}
+ * behind a primary translator such as {@link SQLErrorCodeSQLExceptionTranslator} or
+ * {@link SQLExceptionSubclassTranslator}. As of 6.2.12, it specifically introspects
+ * {@link java.sql.BatchUpdateException} to look at the underlying exception
+ * (for alignment when used behind a {@link SQLExceptionSubclassTranslator}).
+ *
  * @author Rod Johnson
  * @author Juergen Hoeller
  * @author Thomas Risberg
  * @see java.sql.SQLException#getSQLState()
  * @see SQLErrorCodeSQLExceptionTranslator
+ * @see SQLExceptionSubclassTranslator
  */
 public class SQLStateSQLExceptionTranslator extends AbstractFallbackSQLExceptionTranslator {
 
-	private static final Set<String> BAD_SQL_GRAMMAR_CODES = new HashSet<String>(8);
+	private static final Set<String> BAD_SQL_GRAMMAR_CODES = Set.of(
+			"07",  // Dynamic SQL error
+			"21",  // Cardinality violation
+			"2A",  // Syntax error direct SQL
+			"37",  // Syntax error dynamic SQL
+			"42",  // General SQL syntax error
+			"65"   // Oracle: unknown identifier
+		);
 
-	private static final Set<String> DATA_INTEGRITY_VIOLATION_CODES = new HashSet<String>(8);
+	private static final Set<String> DATA_INTEGRITY_VIOLATION_CODES = Set.of(
+			"01",  // Data truncation
+			"02",  // No data found
+			"22",  // Value out of range
+			"23",  // Integrity constraint violation
+			"27",  // Triggered data change violation
+			"44"   // With check violation
+		);
 
-	private static final Set<String> DATA_ACCESS_RESOURCE_FAILURE_CODES = new HashSet<String>(8);
+	private static final Set<String> PESSIMISTIC_LOCKING_FAILURE_CODES = Set.of(
+			"40",  // Transaction rollback
+			"61"   // Oracle: deadlock
+	);
 
-	private static final Set<String> TRANSIENT_DATA_ACCESS_RESOURCE_CODES = new HashSet<String>(8);
+	private static final Set<String> DATA_ACCESS_RESOURCE_FAILURE_CODES = Set.of(
+			"08",  // Connection exception
+			"53",  // PostgreSQL: insufficient resources (for example, disk full)
+			"54",  // PostgreSQL: program limit exceeded (for example, statement too complex)
+			"57",  // DB2: out-of-memory exception / database not started
+			"58"   // DB2: unexpected system error
+		);
 
-	private static final Set<String> CONCURRENCY_FAILURE_CODES = new HashSet<String>(4);
+	private static final Set<String> TRANSIENT_DATA_ACCESS_RESOURCE_CODES = Set.of(
+			"JW",  // Sybase: internal I/O error
+			"JZ",  // Sybase: unexpected I/O error
+			"S1"   // DB2: communication failure
+		);
 
-
-	static {
-		BAD_SQL_GRAMMAR_CODES.add("07");	// Dynamic SQL error
-		BAD_SQL_GRAMMAR_CODES.add("21");	// Cardinality violation
-		BAD_SQL_GRAMMAR_CODES.add("2A");	// Syntax error direct SQL
-		BAD_SQL_GRAMMAR_CODES.add("37");	// Syntax error dynamic SQL
-		BAD_SQL_GRAMMAR_CODES.add("42");	// General SQL syntax error
-		BAD_SQL_GRAMMAR_CODES.add("65");	// Oracle: unknown identifier
-
-		DATA_INTEGRITY_VIOLATION_CODES.add("01");	// Data truncation
-		DATA_INTEGRITY_VIOLATION_CODES.add("02");	// No data found
-		DATA_INTEGRITY_VIOLATION_CODES.add("22");	// Value out of range
-		DATA_INTEGRITY_VIOLATION_CODES.add("23");	// Integrity constraint violation
-		DATA_INTEGRITY_VIOLATION_CODES.add("27");	// Triggered data change violation
-		DATA_INTEGRITY_VIOLATION_CODES.add("44");	// With check violation
-
-		DATA_ACCESS_RESOURCE_FAILURE_CODES.add("08");	 // Connection exception
-		DATA_ACCESS_RESOURCE_FAILURE_CODES.add("53");	 // PostgreSQL: insufficient resources (e.g. disk full)
-		DATA_ACCESS_RESOURCE_FAILURE_CODES.add("54");	 // PostgreSQL: program limit exceeded (e.g. statement too complex)
-		DATA_ACCESS_RESOURCE_FAILURE_CODES.add("57");	 // DB2: out-of-memory exception / database not started
-		DATA_ACCESS_RESOURCE_FAILURE_CODES.add("58");	 // DB2: unexpected system error
-
-		TRANSIENT_DATA_ACCESS_RESOURCE_CODES.add("JW");	 // Sybase: internal I/O error
-		TRANSIENT_DATA_ACCESS_RESOURCE_CODES.add("JZ");	 // Sybase: unexpected I/O error
-		TRANSIENT_DATA_ACCESS_RESOURCE_CODES.add("S1");	 // DB2: communication failure
-
-		CONCURRENCY_FAILURE_CODES.add("40");	// Transaction rollback
-		CONCURRENCY_FAILURE_CODES.add("61");	// Oracle: deadlock
-	}
+	private static final Set<Integer> DUPLICATE_KEY_ERROR_CODES = Set.of(
+			1,     // Oracle
+			301,   // SAP HANA
+			1062,  // MySQL/MariaDB
+			2601,  // MS SQL Server
+			2627,  // MS SQL Server
+			-239,  // Informix
+			-268   // Informix
+		);
 
 
 	@Override
-	protected DataAccessException doTranslate(String task, String sql, SQLException ex) {
-		// First, the getSQLState check...
-		String sqlState = getSqlState(ex);
+	protected @Nullable DataAccessException doTranslate(String task, @Nullable String sql, SQLException ex) {
+		SQLException sqlEx = ex;
+		String sqlState;
+		if (sqlEx instanceof BatchUpdateException) {
+			// Unwrap BatchUpdateException to expose contained exception
+			// with potentially more specific SQL state.
+			if (sqlEx.getNextException() != null) {
+				SQLException nestedSqlEx = sqlEx.getNextException();
+				if (nestedSqlEx.getSQLState() != null) {
+					sqlEx = nestedSqlEx;
+				}
+			}
+			sqlState = sqlEx.getSQLState();
+		}
+		else {
+			// Expose top-level exception but potentially use nested SQL state.
+			sqlState = getSqlState(sqlEx);
+		}
+
+		// The actual SQL state check...
 		if (sqlState != null && sqlState.length() >= 2) {
 			String classCode = sqlState.substring(0, 2);
 			if (logger.isDebugEnabled()) {
 				logger.debug("Extracted SQL state class '" + classCode + "' from value '" + sqlState + "'");
 			}
 			if (BAD_SQL_GRAMMAR_CODES.contains(classCode)) {
-				return new BadSqlGrammarException(task, sql, ex);
+				return new BadSqlGrammarException(task, (sql != null ? sql : ""), ex);
 			}
 			else if (DATA_INTEGRITY_VIOLATION_CODES.contains(classCode)) {
-				return new DataIntegrityViolationException(buildMessage(task, sql, ex), ex);
+				if (indicatesDuplicateKey(sqlState, sqlEx.getErrorCode())) {
+					return new DuplicateKeyException(buildMessage(task, sql, sqlEx), ex);
+				}
+				return new DataIntegrityViolationException(buildMessage(task, sql, sqlEx), ex);
+			}
+			else if (PESSIMISTIC_LOCKING_FAILURE_CODES.contains(classCode)) {
+				if (indicatesCannotAcquireLock(sqlState)) {
+					return new CannotAcquireLockException(buildMessage(task, sql, sqlEx), ex);
+				}
+				return new PessimisticLockingFailureException(buildMessage(task, sql, sqlEx), ex);
 			}
 			else if (DATA_ACCESS_RESOURCE_FAILURE_CODES.contains(classCode)) {
-				return new DataAccessResourceFailureException(buildMessage(task, sql, ex), ex);
+				if (indicatesQueryTimeout(sqlState)) {
+					return new QueryTimeoutException(buildMessage(task, sql, sqlEx), ex);
+				}
+				return new DataAccessResourceFailureException(buildMessage(task, sql, sqlEx), ex);
 			}
 			else if (TRANSIENT_DATA_ACCESS_RESOURCE_CODES.contains(classCode)) {
-				return new TransientDataAccessResourceException(buildMessage(task, sql, ex), ex);
-			}
-			else if (CONCURRENCY_FAILURE_CODES.contains(classCode)) {
-				return new ConcurrencyFailureException(buildMessage(task, sql, ex), ex);
+				return new TransientDataAccessResourceException(buildMessage(task, sql, sqlEx), ex);
 			}
 		}
 
 		// For MySQL: exception class name indicating a timeout?
 		// (since MySQL doesn't throw the JDBC 4 SQLTimeoutException)
-		if (ex.getClass().getName().contains("Timeout")) {
-			return new QueryTimeoutException(buildMessage(task, sql, ex), ex);
+		if (sqlEx.getClass().getName().contains("Timeout")) {
+			return new QueryTimeoutException(buildMessage(task, sql, sqlEx), ex);
 		}
 
 		// Couldn't resolve anything proper - resort to UncategorizedSQLException.
@@ -130,7 +174,7 @@ public class SQLStateSQLExceptionTranslator extends AbstractFallbackSQLException
 	 * is to be extracted
 	 * @return the SQL state code
 	 */
-	private String getSqlState(SQLException ex) {
+	private @Nullable String getSqlState(SQLException ex) {
 		String sqlState = ex.getSQLState();
 		if (sqlState == null) {
 			SQLException nestedEx = ex.getNextException();
@@ -139,6 +183,38 @@ public class SQLStateSQLExceptionTranslator extends AbstractFallbackSQLException
 			}
 		}
 		return sqlState;
+	}
+
+
+	/**
+	 * Check whether the given SQL state and the associated error code (in case
+	 * of a generic SQL state value) indicate a {@link DuplicateKeyException}:
+	 * either SQL state 23505 as a specific indication, or the generic SQL state
+	 * 23000 with a well-known vendor code.
+	 * @param sqlState the SQL state value
+	 * @param errorCode the error code
+	 */
+	static boolean indicatesDuplicateKey(@Nullable String sqlState, int errorCode) {
+		return ("23505".equals(sqlState) ||
+				("23000".equals(sqlState) && DUPLICATE_KEY_ERROR_CODES.contains(errorCode)));
+	}
+
+	/**
+	 * Check whether the given SQL state indicates a {@link CannotAcquireLockException},
+	 * with SQL state 40001 as a specific indication.
+	 * @param sqlState the SQL state value
+	 */
+	static boolean indicatesCannotAcquireLock(@Nullable String sqlState) {
+		return "40001".equals(sqlState);
+	}
+
+	/**
+	 * Check whether the given SQL state indicates a {@link QueryTimeoutException},
+	 * with SQL state 57014 as a specific indication.
+	 * @param sqlState the SQL state value
+	 */
+	static boolean indicatesQueryTimeout(@Nullable String sqlState) {
+		return "57014".equals(sqlState);
 	}
 
 }

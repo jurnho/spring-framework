@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,20 +18,24 @@ package org.springframework.web.servlet.mvc;
 
 import java.util.Enumeration;
 import java.util.Properties;
-import javax.servlet.Servlet;
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+
+import jakarta.servlet.Servlet;
+import jakarta.servlet.ServletConfig;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.util.Assert;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.web.servlet.ModelAndView;
 
 /**
  * Spring Controller implementation that wraps a servlet instance which it manages
- * internally. Such a wrapped servlet is not known outside of this controller;
+ * internally. Such a wrapped servlet is not known outside this controller;
  * its entire lifecycle is covered here (in contrast to {@link ServletForwardingController}).
  *
  * <p>Useful to invoke an existing servlet via Spring's dispatching infrastructure,
@@ -44,7 +48,7 @@ import org.springframework.web.servlet.ModelAndView;
  *
  * <p><b>Example:</b> a DispatcherServlet XML context, forwarding "*.do" to the Struts
  * ActionServlet wrapped by a ServletWrappingController. All such requests will go
- * through the configured HandlerInterceptor chain (e.g. an OpenSessionInViewInterceptor).
+ * through the configured HandlerInterceptor chain (for example, an OpenSessionInViewInterceptor).
  * From the Struts point of view, everything will work as usual.
  *
  * <pre class="code">
@@ -78,21 +82,19 @@ import org.springframework.web.servlet.ModelAndView;
  * @author Juergen Hoeller
  * @since 1.1.1
  * @see ServletForwardingController
- * @see org.springframework.orm.jpa.support.OpenEntityManagerInViewInterceptor
- * @see org.springframework.orm.jpa.support.OpenEntityManagerInViewFilter
  */
 public class ServletWrappingController extends AbstractController
 		implements BeanNameAware, InitializingBean, DisposableBean {
 
-	private Class<?> servletClass;
+	private @Nullable Class<? extends Servlet> servletClass;
 
-	private String servletName;
+	private @Nullable String servletName;
 
 	private Properties initParameters = new Properties();
 
-	private String beanName;
+	private @Nullable String beanName;
 
-	private Servlet servletInstance;
+	private @Nullable Servlet servletInstance;
 
 
 	public ServletWrappingController() {
@@ -102,10 +104,10 @@ public class ServletWrappingController extends AbstractController
 
 	/**
 	 * Set the class of the servlet to wrap.
-	 * Needs to implement {@code javax.servlet.Servlet}.
-	 * @see javax.servlet.Servlet
+	 * Needs to implement {@code jakarta.servlet.Servlet}.
+	 * @see jakarta.servlet.Servlet
 	 */
-	public void setServletClass(Class<?> servletClass) {
+	public void setServletClass(Class<? extends Servlet> servletClass) {
 		this.servletClass = servletClass;
 	}
 
@@ -133,33 +135,30 @@ public class ServletWrappingController extends AbstractController
 
 	/**
 	 * Initialize the wrapped Servlet instance.
-	 * @see javax.servlet.Servlet#init(javax.servlet.ServletConfig)
+	 * @see jakarta.servlet.Servlet#init(jakarta.servlet.ServletConfig)
 	 */
 	@Override
 	public void afterPropertiesSet() throws Exception {
 		if (this.servletClass == null) {
-			throw new IllegalArgumentException("servletClass is required");
-		}
-		if (!Servlet.class.isAssignableFrom(this.servletClass)) {
-			throw new IllegalArgumentException("servletClass [" + this.servletClass.getName() +
-				"] needs to implement interface [javax.servlet.Servlet]");
+			throw new IllegalArgumentException("'servletClass' is required");
 		}
 		if (this.servletName == null) {
 			this.servletName = this.beanName;
 		}
-		this.servletInstance = (Servlet) this.servletClass.newInstance();
+		this.servletInstance = ReflectionUtils.accessibleConstructor(this.servletClass).newInstance();
 		this.servletInstance.init(new DelegatingServletConfig());
 	}
 
 
 	/**
 	 * Invoke the wrapped Servlet instance.
-	 * @see javax.servlet.Servlet#service(javax.servlet.ServletRequest, javax.servlet.ServletResponse)
+	 * @see jakarta.servlet.Servlet#service(jakarta.servlet.ServletRequest, jakarta.servlet.ServletResponse)
 	 */
 	@Override
-	protected ModelAndView handleRequestInternal(HttpServletRequest request, HttpServletResponse response)
-		throws Exception {
+	protected @Nullable ModelAndView handleRequestInternal(HttpServletRequest request, HttpServletResponse response)
+			throws Exception {
 
+		Assert.state(this.servletInstance != null, "No Servlet instance");
 		this.servletInstance.service(request, response);
 		return null;
 	}
@@ -167,11 +166,13 @@ public class ServletWrappingController extends AbstractController
 
 	/**
 	 * Destroy the wrapped Servlet instance.
-	 * @see javax.servlet.Servlet#destroy()
+	 * @see jakarta.servlet.Servlet#destroy()
 	 */
 	@Override
 	public void destroy() {
-		this.servletInstance.destroy();
+		if (this.servletInstance != null) {
+			this.servletInstance.destroy();
+		}
 	}
 
 
@@ -183,12 +184,12 @@ public class ServletWrappingController extends AbstractController
 	private class DelegatingServletConfig implements ServletConfig {
 
 		@Override
-		public String getServletName() {
+		public @Nullable String getServletName() {
 			return servletName;
 		}
 
 		@Override
-		public ServletContext getServletContext() {
+		public @Nullable ServletContext getServletContext() {
 			return ServletWrappingController.this.getServletContext();
 		}
 
@@ -198,7 +199,7 @@ public class ServletWrappingController extends AbstractController
 		}
 
 		@Override
-		@SuppressWarnings({ "unchecked", "rawtypes" })
+		@SuppressWarnings({"rawtypes", "unchecked"})
 		public Enumeration<String> getInitParameterNames() {
 			return (Enumeration) initParameters.keys();
 		}

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,7 +18,9 @@ package org.springframework.jms.support;
 
 import java.util.List;
 import java.util.Map;
-import javax.jms.Destination;
+
+import jakarta.jms.Destination;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.NativeMessageHeaderAccessor;
@@ -45,7 +47,7 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#CORRELATION_ID correlationId}.
 	 * @see JmsHeaders#CORRELATION_ID
 	 */
-	public String getCorrelationId() {
+	public @Nullable String getCorrelationId() {
 		return (String) getHeader(JmsHeaders.CORRELATION_ID);
 	}
 
@@ -53,7 +55,7 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#DESTINATION destination}.
 	 * @see JmsHeaders#DESTINATION
 	 */
-	public Destination getDestination() {
+	public @Nullable Destination getDestination() {
 		return (Destination) getHeader(JmsHeaders.DESTINATION);
 	}
 
@@ -61,7 +63,7 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#DELIVERY_MODE delivery mode}.
 	 * @see JmsHeaders#DELIVERY_MODE
 	 */
-	public Integer getDeliveryMode() {
+	public @Nullable Integer getDeliveryMode() {
 		return (Integer) getHeader(JmsHeaders.DELIVERY_MODE);
 	}
 
@@ -69,7 +71,7 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the message {@link JmsHeaders#EXPIRATION expiration}.
 	 * @see JmsHeaders#EXPIRATION
 	 */
-	public Long getExpiration() {
+	public @Nullable Long getExpiration() {
 		return (Long) getHeader(JmsHeaders.EXPIRATION);
 	}
 
@@ -77,15 +79,15 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#MESSAGE_ID message id}.
 	 * @see JmsHeaders#MESSAGE_ID
 	 */
-	public String getMessageId() {
+	public @Nullable String getMessageId() {
 		return (String) getHeader(JmsHeaders.MESSAGE_ID);
 	}
 
 	/**
-	 * Return the {@link JmsHeaders#PRIORITY}.
+	 * Return the {@link JmsHeaders#PRIORITY priority}.
 	 * @see JmsHeaders#PRIORITY
 	 */
-	public Integer getPriority() {
+	public @Nullable Integer getPriority() {
 		return (Integer) getHeader(JmsHeaders.PRIORITY);
 	}
 
@@ -93,7 +95,7 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#REPLY_TO reply to}.
 	 * @see JmsHeaders#REPLY_TO
 	 */
-	public Destination getReplyTo() {
+	public @Nullable Destination getReplyTo() {
 		return (Destination) getHeader(JmsHeaders.REPLY_TO);
 	}
 
@@ -101,7 +103,7 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#REDELIVERED redelivered} flag.
 	 * @see JmsHeaders#REDELIVERED
 	 */
-	public Boolean getRedelivered() {
+	public @Nullable Boolean getRedelivered() {
 		return (Boolean) getHeader(JmsHeaders.REDELIVERED);
 	}
 
@@ -109,7 +111,7 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#TYPE type}.
 	 * @see JmsHeaders#TYPE
 	 */
-	public String getType() {
+	public @Nullable String getType() {
 		return (String) getHeader(JmsHeaders.TYPE);
 	}
 
@@ -117,7 +119,8 @@ public class JmsMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 * Return the {@link JmsHeaders#TIMESTAMP timestamp}.
 	 * @see JmsHeaders#TIMESTAMP
 	 */
-	public Long getTimestamp() {
+	@Override
+	public @Nullable Long getTimestamp() {
 		return (Long) getHeader(JmsHeaders.TIMESTAMP);
 	}
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,26 +17,29 @@
 package org.springframework.messaging.tcp;
 
 import java.io.Closeable;
+import java.util.concurrent.CompletableFuture;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.messaging.Message;
-import org.springframework.util.concurrent.ListenableFuture;
 
 /**
  * A contract for sending messages and managing a TCP connection.
  *
  * @author Rossen Stoyanchev
  * @since 4.0
- * @param <P> the type of payload for outbound {@link Message}s
+ * @param <P> the type of payload for outbound {@link Message Messages}
  */
 public interface TcpConnection<P> extends Closeable {
 
 	/**
 	 * Send the given message.
 	 * @param message the message
-	 * @return a ListenableFuture that can be used to determine when and if the
+	 * @return a CompletableFuture that can be used to determine when and if the
 	 * message was successfully sent
+	 * @since 6.0
 	 */
-	ListenableFuture<Void> send(Message<P> message);
+	CompletableFuture<@Nullable Void> sendAsync(Message<P> message);
 
 	/**
 	 * Register a task to invoke after a period of read inactivity.

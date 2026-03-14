@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@ package org.springframework.aop.target;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.TargetSource;
 
@@ -41,11 +42,11 @@ import org.springframework.aop.TargetSource;
  */
 public abstract class AbstractLazyCreationTargetSource implements TargetSource {
 
-	/** Logger available to subclasses */
+	/** Logger available to subclasses. */
 	protected final Log logger = LogFactory.getLog(getClass());
 
-	/** The lazily initialized target object */
-	private Object lazyTarget;
+	/** The lazily initialized target object. */
+	private @Nullable Object lazyTarget;
 
 
 	/**
@@ -65,13 +66,8 @@ public abstract class AbstractLazyCreationTargetSource implements TargetSource {
 	 * @see #isInitialized()
 	 */
 	@Override
-	public synchronized Class<?> getTargetClass() {
+	public synchronized @Nullable Class<?> getTargetClass() {
 		return (this.lazyTarget != null ? this.lazyTarget.getClass() : null);
-	}
-
-	@Override
-	public boolean isStatic() {
-		return false;
 	}
 
 	/**
@@ -86,11 +82,6 @@ public abstract class AbstractLazyCreationTargetSource implements TargetSource {
 			this.lazyTarget = createObject();
 		}
 		return this.lazyTarget;
-	}
-
-	@Override
-	public void releaseTarget(Object target) throws Exception {
-		// nothing to do
 	}
 
 

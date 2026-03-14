@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,8 +16,9 @@
 
 package org.springframework.test.web.servlet.htmlunit.webdriver;
 
-import com.gargoylesoftware.htmlunit.BrowserVersion;
-import com.gargoylesoftware.htmlunit.WebClient;
+import org.htmlunit.BrowserVersion;
+import org.htmlunit.WebClient;
+import org.jspecify.annotations.Nullable;
 import org.openqa.selenium.htmlunit.HtmlUnitDriver;
 
 import org.springframework.test.web.servlet.MockMvc;
@@ -48,7 +49,7 @@ import org.springframework.web.context.WebApplicationContext;
  */
 public class MockMvcHtmlUnitDriverBuilder extends MockMvcWebConnectionBuilderSupport<MockMvcHtmlUnitDriverBuilder> {
 
-	private HtmlUnitDriver driver;
+	private @Nullable HtmlUnitDriver driver;
 
 	private boolean javascriptEnabled = true;
 

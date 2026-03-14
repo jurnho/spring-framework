@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,15 +22,18 @@ import javax.cache.Caching;
 import javax.cache.configuration.MutableConfiguration;
 import javax.cache.spi.CachingProvider;
 
-import org.junit.After;
-import org.junit.Before;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import org.springframework.cache.AbstractCacheTests;
+import org.springframework.context.testfixture.cache.AbstractValueAdaptingCacheTests;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author Stephane Nicoll
  */
-public class JCacheEhCacheApiTests extends AbstractCacheTests<JCacheCache> {
+class JCacheEhCacheApiTests extends AbstractValueAdaptingCacheTests<JCacheCache> {
 
 	private CacheManager cacheManager;
 
@@ -38,35 +41,76 @@ public class JCacheEhCacheApiTests extends AbstractCacheTests<JCacheCache> {
 
 	private JCacheCache cache;
 
+	private JCacheCache cacheNoNull;
 
-	@Before
-	public void setup() {
+
+	@BeforeEach
+	void setup() {
 		this.cacheManager = getCachingProvider().getCacheManager();
 		this.cacheManager.createCache(CACHE_NAME, new MutableConfiguration<>());
+		this.cacheManager.createCache(CACHE_NAME_NO_NULL, new MutableConfiguration<>());
 		this.nativeCache = this.cacheManager.getCache(CACHE_NAME);
 		this.cache = new JCacheCache(this.nativeCache);
+		Cache<Object, Object> nativeCacheNoNull = this.cacheManager.getCache(CACHE_NAME_NO_NULL);
+		this.cacheNoNull = new JCacheCache(nativeCacheNoNull, false);
 	}
 
 	protected CachingProvider getCachingProvider() {
-		return Caching.getCachingProvider();
+		return Caching.getCachingProvider("org.ehcache.jsr107.EhcacheCachingProvider");
 	}
 
-	@After
-	public void shutdown() {
+	@AfterEach
+	void shutdown() {
 		if (this.cacheManager != null) {
 			this.cacheManager.close();
 		}
 	}
 
-
 	@Override
 	protected JCacheCache getCache() {
-		return this.cache;
+		return getCache(true);
+	}
+
+	@Override
+	protected JCacheCache getCache(boolean allowNull) {
+		return (allowNull ? this.cache : this.cacheNoNull);
 	}
 
 	@Override
 	protected Object getNativeCache() {
 		return this.nativeCache;
+	}
+
+	@Test
+	void testPutIfAbsentNullValue() {
+		JCacheCache cache = getCache(true);
+
+		String key = createRandomKey();
+		String value = null;
+
+		assertThat(cache.get(key)).isNull();
+		assertThat(cache.putIfAbsent(key, value)).isNull();
+		assertThat(cache.get(key).get()).isEqualTo(value);
+		org.springframework.cache.Cache.ValueWrapper wrapper = cache.putIfAbsent(key, "anotherValue");
+		// A value is set but is 'null'
+		assertThat(wrapper).isNotNull();
+		assertThat(wrapper.get()).isNull();
+		// not changed
+		assertThat(cache.get(key).get()).isEqualTo(value);
+	}
+
+	@Test
+	void resetCaches() {
+		JCacheCacheManager cm = new JCacheCacheManager(cacheManager);
+		org.springframework.cache.Cache cache = cm.getCache(CACHE_NAME);
+		cache.put("key", "value");
+		assertThat(cm.getCacheNames()).contains(CACHE_NAME);
+		assertThat(cm.getCache(CACHE_NAME)).isNotNull().isSameAs(cache);
+		assertThat(cacheManager.getCache(CACHE_NAME).iterator()).hasNext();
+		cm.resetCaches();
+		assertThat(cm.getCacheNames()).contains(CACHE_NAME);
+		assertThat(cm.getCache(CACHE_NAME)).isNotNull().isSameAs(cache);
+		assertThat(cacheManager.getCache(CACHE_NAME).iterator()).isExhausted();
 	}
 
 }

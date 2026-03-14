@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,41 +18,82 @@ package org.springframework.mock.http.client;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.http.HttpMethod;
 import org.springframework.http.client.ClientHttpRequest;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.mock.http.MockHttpOutputMessage;
+import org.springframework.util.Assert;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * Mock implementation of {@link ClientHttpRequest}.
  *
  * @author Rossen Stoyanchev
+ * @author Brian Clozel
  * @author Sam Brannen
  * @since 3.2
  */
 public class MockClientHttpRequest extends MockHttpOutputMessage implements ClientHttpRequest {
 
+	private HttpMethod httpMethod;
+
 	private URI uri;
 
-	private HttpMethod httpMethod;
+	private @Nullable ClientHttpResponse clientHttpResponse;
 
 	private boolean executed = false;
 
-	private ClientHttpResponse clientHttpResponse;
+	@Nullable Map<String, Object> attributes;
 
 
 	/**
-	 * Default constructor.
+	 * Create a {@code MockClientHttpRequest} with {@link HttpMethod#GET GET} as
+	 * the HTTP request method and {@code "/"} as the {@link URI}.
 	 */
 	public MockClientHttpRequest() {
+		this(HttpMethod.GET, URI.create("/"));
 	}
 
 	/**
-	 * Create an instance with the given HttpMethod and URI.
+	 * Create a {@code MockClientHttpRequest} with the given {@link HttpMethod},
+	 * URI template, and URI template variable values.
+	 * @since 6.0.3
+	 */
+	public MockClientHttpRequest(HttpMethod httpMethod, String uriTemplate, Object... vars) {
+		this(httpMethod, UriComponentsBuilder.fromUriString(uriTemplate).buildAndExpand(vars).encode().toUri());
+	}
+
+	/**
+	 * Create a {@code MockClientHttpRequest} with the given {@link HttpMethod}
+	 * and {@link URI}.
 	 */
 	public MockClientHttpRequest(HttpMethod httpMethod, URI uri) {
 		this.httpMethod = httpMethod;
+		this.uri = uri;
+	}
+
+
+	/**
+	 * Set the HTTP method of the request.
+	 */
+	public void setMethod(HttpMethod httpMethod) {
+		this.httpMethod = httpMethod;
+	}
+
+	@Override
+	public HttpMethod getMethod() {
+		return this.httpMethod;
+	}
+
+	/**
+	 * Set the URI of the request.
+	 */
+	public void setURI(URI uri) {
 		this.uri = uri;
 	}
 
@@ -61,25 +102,31 @@ public class MockClientHttpRequest extends MockHttpOutputMessage implements Clie
 		return this.uri;
 	}
 
-	public void setURI(URI uri) {
-		this.uri = uri;
-	}
-
-	@Override
-	public HttpMethod getMethod() {
-		return this.httpMethod;
-	}
-
-	public void setMethod(HttpMethod httpMethod) {
-		this.httpMethod = httpMethod;
-	}
-
+	/**
+	 * Set the {@link ClientHttpResponse} to be used as the result of executing
+	 * this request.
+	 * @see #execute()
+	 */
 	public void setResponse(ClientHttpResponse clientHttpResponse) {
 		this.clientHttpResponse = clientHttpResponse;
 	}
 
+	/**
+	 * Get the {@link #isExecuted() executed} flag.
+	 * @see #execute()
+	 */
 	public boolean isExecuted() {
 		return this.executed;
+	}
+
+	@Override
+	public Map<String, Object> getAttributes() {
+		Map<String, Object> attributes = this.attributes;
+		if (attributes == null) {
+			attributes = new ConcurrentHashMap<>();
+			this.attributes = attributes;
+		}
+		return attributes;
 	}
 
 	/**
@@ -96,28 +143,21 @@ public class MockClientHttpRequest extends MockHttpOutputMessage implements Clie
 	/**
 	 * The default implementation returns the configured
 	 * {@link #setResponse(ClientHttpResponse) response}.
-	 *
 	 * <p>Override this method to execute the request and provide a response,
-	 * potentially different than the configured response.
+	 * potentially different from the configured response.
 	 */
 	protected ClientHttpResponse executeInternal() throws IOException {
+		Assert.state(this.clientHttpResponse != null, "No ClientHttpResponse");
 		return this.clientHttpResponse;
 	}
+
 
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		if (this.httpMethod != null) {
-			sb.append(this.httpMethod);
-		}
-		if (this.uri != null) {
-			sb.append(" ").append(this.uri);
-		}
+		sb.append(this.httpMethod).append(' ').append(this.uri);
 		if (!getHeaders().isEmpty()) {
-			sb.append(", headers : ").append(getHeaders());
-		}
-		if (sb.length() == 0) {
-			sb.append("Not yet initialized");
+			sb.append(", headers: ").append(getHeaders());
 		}
 		return sb.toString();
 	}

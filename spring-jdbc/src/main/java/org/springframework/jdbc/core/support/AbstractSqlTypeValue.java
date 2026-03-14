@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +19,8 @@ package org.springframework.jdbc.core.support;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.jdbc.core.SqlTypeValue;
 
@@ -53,7 +55,7 @@ import org.springframework.jdbc.core.SqlTypeValue;
 public abstract class AbstractSqlTypeValue implements SqlTypeValue {
 
 	@Override
-	public final void setTypeValue(PreparedStatement ps, int paramIndex, int sqlType, String typeName)
+	public final void setTypeValue(PreparedStatement ps, int paramIndex, int sqlType, @Nullable String typeName)
 			throws SQLException {
 
 		Object value = createTypeValue(ps.getConnection(), sqlType, typeName);
@@ -68,13 +70,14 @@ public abstract class AbstractSqlTypeValue implements SqlTypeValue {
 	/**
 	 * Create the type value to be passed into {@code PreparedStatement.setObject}.
 	 * @param con the JDBC Connection, if needed to create any database-specific objects
-	 * @param sqlType SQL type of the parameter we are setting
+	 * @param sqlType the SQL type of the parameter we are setting
 	 * @param typeName the type name of the parameter
 	 * @return the type value
-	 * @throws SQLException if a SQLException is encountered setting
+	 * @throws SQLException if an SQLException is encountered setting
 	 * parameter values (that is, there's no need to catch SQLException)
 	 * @see java.sql.PreparedStatement#setObject(int, Object, int)
 	 */
-	protected abstract Object createTypeValue(Connection con, int sqlType, String typeName) throws SQLException;
+	protected abstract Object createTypeValue(Connection con, int sqlType, @Nullable String typeName)
+			throws SQLException;
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,9 @@
 
 package org.springframework.jdbc.core.namedparam;
 
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.support.JdbcDaoSupport;
 
 /**
@@ -25,10 +28,14 @@ import org.springframework.jdbc.core.support.JdbcDaoSupport;
  * @author Juergen Hoeller
  * @since 2.0
  * @see NamedParameterJdbcTemplate
+ * @deprecated as of 7.0, in favor of direct injection of {@link NamedParameterJdbcTemplate}
+ * or {@link org.springframework.jdbc.core.simple.JdbcClient}
  */
+@Deprecated(since = "7.0", forRemoval = true)
+@SuppressWarnings("removal")
 public class NamedParameterJdbcDaoSupport extends JdbcDaoSupport {
 
-	private NamedParameterJdbcTemplate namedParameterJdbcTemplate;
+	private @Nullable NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
 
 	/**
@@ -36,14 +43,17 @@ public class NamedParameterJdbcDaoSupport extends JdbcDaoSupport {
 	 */
 	@Override
 	protected void initTemplateConfig() {
-		this.namedParameterJdbcTemplate = new NamedParameterJdbcTemplate(getJdbcTemplate());
+		JdbcTemplate jdbcTemplate = getJdbcTemplate();
+		if (jdbcTemplate != null) {
+			this.namedParameterJdbcTemplate = new NamedParameterJdbcTemplate(jdbcTemplate);
+		}
 	}
 
 	/**
 	 * Return a NamedParameterJdbcTemplate wrapping the configured JdbcTemplate.
 	 */
-	public NamedParameterJdbcTemplate getNamedParameterJdbcTemplate() {
-	  return namedParameterJdbcTemplate;
+	public @Nullable NamedParameterJdbcTemplate getNamedParameterJdbcTemplate() {
+		return this.namedParameterJdbcTemplate;
 	}
 
 }

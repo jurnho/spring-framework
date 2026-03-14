@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,23 +20,29 @@ import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.After;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator;
+import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
-import org.springframework.context.ApplicationContext;
+import org.springframework.beans.testfixture.beans.IOther;
+import org.springframework.beans.testfixture.beans.ITestBean;
+import org.springframework.beans.testfixture.beans.TestBean;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ConfigurationClassPostProcessor;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.context.annotation.Proxyable;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.tests.sample.beans.TestBean;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.context.annotation.ProxyType.INTERFACES;
+import static org.springframework.context.annotation.ProxyType.TARGET_CLASS;
 
 /**
  * System tests covering use of AspectJ {@link Aspect}s in conjunction with {@link Configuration} classes.
@@ -51,40 +57,64 @@ import static org.junit.Assert.*;
  * @author Chris Beams
  * @author Juergen Hoeller
  */
-public class ConfigurationClassAspectIntegrationTests {
+class ConfigurationClassAspectIntegrationTests {
 
 	@Test
-	public void aspectAnnotatedConfiguration() {
+	void aspectAnnotatedConfiguration() {
 		assertAdviceWasApplied(AspectConfig.class);
 	}
 
 	@Test
-	public void configurationIncludesAspect() {
+	void configurationIncludesAspect() {
 		assertAdviceWasApplied(ConfigurationWithAspect.class);
 	}
 
-	private void assertAdviceWasApplied(Class<?> configClass) {
+	@Test
+	void configurationIncludesAspectAndProxyable() {
+		assertAdviceWasApplied(ConfigurationWithAspectAndProxyable.class, TestBean.class);
+	}
+
+	@Test
+	void configurationIncludesAspectAndProxyableInterfaces() {
+		assertAdviceWasApplied(ConfigurationWithAspectAndProxyableInterfaces.class, TestBean.class, Comparable.class);
+	}
+
+	@Test
+	void configurationIncludesAspectAndProxyableTargetClass() {
+		assertAdviceWasApplied(ConfigurationWithAspectAndProxyableTargetClass.class);
+	}
+
+	private void assertAdviceWasApplied(Class<?> configClass, Class<?>... notImplemented) {
 		DefaultListableBeanFactory factory = new DefaultListableBeanFactory();
 		new XmlBeanDefinitionReader(factory).loadBeanDefinitions(
 				new ClassPathResource("aspectj-autoproxy-config.xml", ConfigurationClassAspectIntegrationTests.class));
 		GenericApplicationContext ctx = new GenericApplicationContext(factory);
 		ctx.addBeanFactoryPostProcessor(new ConfigurationClassPostProcessor());
-		ctx.registerBeanDefinition("config", new RootBeanDefinition(configClass));
+		ctx.registerBeanDefinition("config",
+				new RootBeanDefinition(configClass, AbstractBeanDefinition.AUTOWIRE_CONSTRUCTOR, false));
 		ctx.refresh();
 
-		TestBean testBean = ctx.getBean("testBean", TestBean.class);
-		assertThat(testBean.getName(), equalTo("name"));
-		testBean.absquatulate();
-		assertThat(testBean.getName(), equalTo("advisedName"));
+		ITestBean testBean = ctx.getBean("testBean", ITestBean.class);
+		if (notImplemented.length > 0) {
+			assertThat(testBean).isNotInstanceOfAny(notImplemented);
+		}
+		else {
+			assertThat(testBean).isInstanceOf(TestBean.class);
+		}
+		assertThat(testBean.getName()).isEqualTo("name");
+		((IOther) testBean).absquatulate();
+		assertThat(testBean.getName()).isEqualTo("advisedName");
+		ctx.close();
 	}
 
 	@Test
-	public void withInnerClassAndLambdaExpression() {
-		ApplicationContext ctx = new AnnotationConfigApplicationContext(Application.class, CountingAspect.class);
+	void withInnerClassAndLambdaExpression() {
+		ConfigurableApplicationContext ctx = new AnnotationConfigApplicationContext(Application.class, CountingAspect.class);
 		ctx.getBeansOfType(Runnable.class).forEach((k, v) -> v.run());
 
 		// TODO: returns just 1 as of AspectJ 1.9 beta 3, not detecting the applicable lambda expression anymore
 		// assertEquals(2, ctx.getBean(CountingAspect.class).count);
+		ctx.close();
 	}
 
 
@@ -97,7 +127,7 @@ public class ConfigurationClassAspectIntegrationTests {
 			return new TestBean("name");
 		}
 
-		@Before("execution(* org.springframework.tests.sample.beans.TestBean.absquatulate(..)) && target(testBean)")
+		@Before("execution(* org.springframework.beans.testfixture.beans.TestBean.absquatulate(..)) && target(testBean)")
 		public void touchBean(TestBean testBean) {
 			testBean.setName("advisedName");
 		}
@@ -119,10 +149,62 @@ public class ConfigurationClassAspectIntegrationTests {
 	}
 
 
+	@Configuration
+	static class ConfigurationWithAspectAndProxyable {
+
+		@Bean
+		@Proxyable(INTERFACES)
+		public TestBean testBean() {
+			return new TestBean("name");
+		}
+
+		@Bean
+		public NameChangingAspect nameChangingAspect() {
+			return new NameChangingAspect();
+		}
+	}
+
+
+	@Configuration()
+	static class ConfigurationWithAspectAndProxyableInterfaces {
+
+		@Bean
+		@Proxyable(interfaces = {ITestBean.class, IOther.class})
+		public TestBean testBean() {
+			return new TestBean("name");
+		}
+
+		@Bean
+		public NameChangingAspect nameChangingAspect() {
+			return new NameChangingAspect();
+		}
+	}
+
+
+	@Configuration
+	static class ConfigurationWithAspectAndProxyableTargetClass {
+
+		public ConfigurationWithAspectAndProxyableTargetClass(AbstractAutoProxyCreator autoProxyCreator) {
+			autoProxyCreator.setProxyTargetClass(false);
+		}
+
+		@Bean
+		@Proxyable(TARGET_CLASS)
+		public TestBean testBean() {
+			return new TestBean("name");
+		}
+
+		@Bean
+		public NameChangingAspect nameChangingAspect() {
+			return new NameChangingAspect();
+		}
+	}
+
+
 	@Aspect
 	static class NameChangingAspect {
 
-		@Before("execution(* org.springframework.tests.sample.beans.TestBean.absquatulate(..)) && target(testBean)")
+		@Before("execution(* org.springframework.beans.testfixture.beans.TestBean.absquatulate(..)) && target(testBean)")
 		public void touchBean(TestBean testBean) {
 			testBean.setName("advisedName");
 		}
@@ -136,10 +218,7 @@ public class ConfigurationClassAspectIntegrationTests {
 
 		@Bean
 		Runnable fromInnerClass() {
-			return new Runnable() {
-				@Override
-				public void run() {
-				}
+			return () -> {
 			};
 		}
 

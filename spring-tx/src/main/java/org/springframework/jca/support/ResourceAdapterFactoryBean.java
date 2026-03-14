@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,25 +16,25 @@
 
 package org.springframework.jca.support;
 
-import javax.resource.ResourceException;
-import javax.resource.spi.BootstrapContext;
-import javax.resource.spi.ResourceAdapter;
-import javax.resource.spi.XATerminator;
-import javax.resource.spi.work.WorkManager;
+import jakarta.resource.ResourceException;
+import jakarta.resource.spi.BootstrapContext;
+import jakarta.resource.spi.ResourceAdapter;
+import jakarta.resource.spi.XATerminator;
+import jakarta.resource.spi.work.WorkManager;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.util.Assert;
 
 /**
  * {@link org.springframework.beans.factory.FactoryBean} that bootstraps
- * the specified JCA 1.5 {@link javax.resource.spi.ResourceAdapter},
- * starting it with a local {@link javax.resource.spi.BootstrapContext}
+ * the specified JCA 1.7 {@link jakarta.resource.spi.ResourceAdapter},
+ * starting it with a local {@link jakarta.resource.spi.BootstrapContext}
  * and exposing it for bean references. It will also stop the ResourceAdapter
  * on context shutdown. This corresponds to 'non-managed' bootstrap in a
- * local environment, according to the JCA 1.5 specification.
+ * local environment, according to the JCA 1.7 specification.
  *
  * <p>This is essentially an adapter for bean-style bootstrapping of a
  * JCA ResourceAdapter, allowing the BootstrapContext or its elements
@@ -45,18 +45,18 @@ import org.springframework.util.Assert;
  * @see #setResourceAdapter
  * @see #setBootstrapContext
  * @see #setWorkManager
- * @see javax.resource.spi.ResourceAdapter#start(javax.resource.spi.BootstrapContext)
- * @see javax.resource.spi.ResourceAdapter#stop()
+ * @see jakarta.resource.spi.ResourceAdapter#start(jakarta.resource.spi.BootstrapContext)
+ * @see jakarta.resource.spi.ResourceAdapter#stop()
  */
 public class ResourceAdapterFactoryBean implements FactoryBean<ResourceAdapter>, InitializingBean, DisposableBean {
 
-	private ResourceAdapter resourceAdapter;
+	private @Nullable ResourceAdapter resourceAdapter;
 
-	private BootstrapContext bootstrapContext;
+	private @Nullable BootstrapContext bootstrapContext;
 
-	private WorkManager workManager;
+	private @Nullable WorkManager workManager;
 
-	private XATerminator xaTerminator;
+	private @Nullable XATerminator xaTerminator;
 
 
 	/**
@@ -66,9 +66,8 @@ public class ResourceAdapterFactoryBean implements FactoryBean<ResourceAdapter>,
 	 * through the "resourceAdapter" property.
 	 * @see #setResourceAdapter
 	 */
-	public void setResourceAdapterClass(Class<?> resourceAdapterClass) {
-		Assert.isAssignable(ResourceAdapter.class, resourceAdapterClass);
-		this.resourceAdapter = (ResourceAdapter) BeanUtils.instantiateClass(resourceAdapterClass);
+	public void setResourceAdapterClass(Class<? extends ResourceAdapter> resourceAdapterClass) {
+		this.resourceAdapter = BeanUtils.instantiateClass(resourceAdapterClass);
 	}
 
 	/**
@@ -111,7 +110,7 @@ public class ResourceAdapterFactoryBean implements FactoryBean<ResourceAdapter>,
 
 	/**
 	 * Builds the BootstrapContext and starts the ResourceAdapter with it.
-	 * @see javax.resource.spi.ResourceAdapter#start(javax.resource.spi.BootstrapContext)
+	 * @see jakarta.resource.spi.ResourceAdapter#start(jakarta.resource.spi.BootstrapContext)
 	 */
 	@Override
 	public void afterPropertiesSet() throws ResourceException {
@@ -126,7 +125,7 @@ public class ResourceAdapterFactoryBean implements FactoryBean<ResourceAdapter>,
 
 
 	@Override
-	public ResourceAdapter getObject() {
+	public @Nullable ResourceAdapter getObject() {
 		return this.resourceAdapter;
 	}
 
@@ -143,11 +142,13 @@ public class ResourceAdapterFactoryBean implements FactoryBean<ResourceAdapter>,
 
 	/**
 	 * Stops the ResourceAdapter.
-	 * @see javax.resource.spi.ResourceAdapter#stop()
+	 * @see jakarta.resource.spi.ResourceAdapter#stop()
 	 */
 	@Override
 	public void destroy() {
-		this.resourceAdapter.stop();
+		if (this.resourceAdapter != null) {
+			this.resourceAdapter.stop();
+		}
 	}
 
 }

@@ -1,8 +1,14 @@
 /**
- * Simplification layer over JdbcTemplate for Java 5 and above.
+ * Simplification layer for common JDBC interactions.
  *
- * <p>{@code SimpleJdbcInsert} and {@code SimpleJdbcCall} are classes that takes advantage
- * of database metadata provided by the JDBC driver to simplify the application code. Much of the
- * parameter specification becomes unnecessary since it can be looked up in the metadata.
+ * <p>{@code JdbcClient} provides a fluent API for JDBC query and update operations,
+ * supporting JDBC-style positional as well as Spring-style named parameters.
+ *
+ * <p>{@code SimpleJdbcInsert} and {@code SimpleJdbcCall} take advantage of database
+ * meta-data provided by the JDBC driver to simplify the application code. Much of the
+ * parameter specification becomes unnecessary since it can be looked up in the meta-data.
  */
+@NullMarked
 package org.springframework.jdbc.core.simple;
+
+import org.jspecify.annotations.NullMarked;

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,16 +16,48 @@
 
 package org.springframework.web.servlet.tags.form;
 
-import javax.servlet.jsp.JspException;
+import jakarta.servlet.jsp.JspException;
 
 /**
- * Data-binding aware JSP tag for rendering a hidden HTML '{@code input}' field
- * containing the databound value.
+ * The {@code <hidden>} tag renders an HTML 'input' tag with type 'hidden' using
+ * the bound value.
  *
  * <p>Example (binding to 'name' property of form backing object):
- * <pre class="code>
+ * <pre class="code">
  * &lt;form:hidden path=&quot;name&quot;/&gt;
  * </pre>
+ *
+ * <h3>Attribute Summary</h3>
+ * <table>
+ * <thead>
+ * <tr>
+ * <th class="table-header col-first">Attribute</th>
+ * <th class="table-header col-second">Required?</th>
+ * <th class="table-header col-second">Runtime Expression?</th>
+ * <th class="table-header col-last">Description</th>
+ * </tr>
+ * </thead>
+ * <tbody>
+ * <tr class="even-row-color">
+ * <td><p>htmlEscape</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Enable/disable HTML escaping of rendered values.</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>id</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>path</p></td>
+ * <td><p>true</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Path to property for data binding</p></td>
+ * </tr>
+ * </tbody>
+ * </table>
  *
  * @author Rob Harrop
  * @author Juergen Hoeller

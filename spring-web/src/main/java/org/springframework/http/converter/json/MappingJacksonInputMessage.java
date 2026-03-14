@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +19,8 @@ package org.springframework.http.converter.json;
 import java.io.IOException;
 import java.io.InputStream;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpInputMessage;
 
@@ -28,14 +30,16 @@ import org.springframework.http.HttpInputMessage;
  *
  * @author Sebastien Deleuze
  * @since 4.2
+ * @deprecated since 7.0 in favor of using {@link org.springframework.http.converter.SmartHttpMessageConverter} hints
  */
+@Deprecated(since = "7.0", forRemoval = true)
 public class MappingJacksonInputMessage implements HttpInputMessage {
 
 	private final InputStream body;
 
 	private final HttpHeaders headers;
 
-	private Class<?> deserializationView;
+	private @Nullable Class<?> deserializationView;
 
 
 	public MappingJacksonInputMessage(InputStream body, HttpHeaders headers) {
@@ -59,11 +63,11 @@ public class MappingJacksonInputMessage implements HttpInputMessage {
 		return this.headers;
 	}
 
-	public void setDeserializationView(Class<?> deserializationView) {
+	public void setDeserializationView(@Nullable Class<?> deserializationView) {
 		this.deserializationView = deserializationView;
 	}
 
-	public Class<?> getDeserializationView() {
+	public @Nullable Class<?> getDeserializationView() {
 		return this.deserializationView;
 	}
 

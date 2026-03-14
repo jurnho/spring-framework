@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,21 +16,24 @@
 
 package org.springframework.core.env;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.convert.support.ConfigurableConversionService;
 
 /**
- * Configuration interface to be implemented by most if not all {@link PropertyResolver
- * PropertyResolver} types. Provides facilities for accessing and customizing the
- * {@link org.springframework.core.convert.ConversionService ConversionService} used when
- * converting property values from one type to another.
+ * Configuration interface to be implemented by most if not all {@link PropertyResolver}
+ * types. Provides facilities for accessing and customizing the
+ * {@link org.springframework.core.convert.ConversionService ConversionService}
+ * used when converting property values from one type to another.
  *
  * @author Chris Beams
+ * @author Stephane Nicoll
  * @since 3.1
  */
 public interface ConfigurablePropertyResolver extends PropertyResolver {
 
 	/**
-	 * @return the {@link ConfigurableConversionService} used when performing type
+	 * Return the {@link ConfigurableConversionService} used when performing type
 	 * conversions on properties.
 	 * <p>The configurable nature of the returned conversion service allows for
 	 * the convenient addition and removal of individual {@code Converter} instances:
@@ -46,10 +49,10 @@ public interface ConfigurablePropertyResolver extends PropertyResolver {
 	/**
 	 * Set the {@link ConfigurableConversionService} to be used when performing type
 	 * conversions on properties.
-	 * <p><strong>Note:</strong> as an alternative to fully replacing the {@code
-	 * ConversionService}, consider adding or removing individual {@code Converter}
-	 * instances by drilling into {@link #getConversionService()} and calling methods
-	 * such as {@code #addConverter}.
+	 * <p><strong>Note:</strong> as an alternative to fully replacing the
+	 * {@code ConversionService}, consider adding or removing individual
+	 * {@code Converter} instances by drilling into {@link #getConversionService()}
+	 * and calling methods such as {@code #addConverter}.
 	 * @see PropertyResolver#getProperty(String, Class)
 	 * @see #getConversionService()
 	 * @see org.springframework.core.convert.converter.ConverterRegistry#addConverter
@@ -67,14 +70,23 @@ public interface ConfigurablePropertyResolver extends PropertyResolver {
 	void setPlaceholderSuffix(String placeholderSuffix);
 
 	/**
-	 * Specify the separating character between the placeholders replaced by this
-	 * resolver and their associated default value, or {@code null} if no such
+	 * Set the separating character to be honored between placeholders replaced by
+	 * this resolver and their associated default values, or {@code null} if no such
 	 * special character should be processed as a value separator.
 	 */
-	void setValueSeparator(String valueSeparator);
+	void setValueSeparator(@Nullable String valueSeparator);
 
 	/**
-	 * Set whether to throw an exception when encountering an unresolvable placeholder
+	 * Set the escape character to use to ignore the
+	 * {@linkplain #setPlaceholderPrefix(String) placeholder prefix} and the
+	 * {@linkplain #setValueSeparator(String) value separator}, or {@code null}
+	 * if no escaping should take place.
+	 * @since 6.2
+	 */
+	void setEscapeCharacter(@Nullable Character escapeCharacter);
+
+	/**
+	 * Specify whether to throw an exception when encountering an unresolvable placeholder
 	 * nested within the value of a given property. A {@code false} value indicates strict
 	 * resolution, i.e. that an exception will be thrown. A {@code true} value indicates
 	 * that unresolvable nested placeholders should be passed through in their unresolved
@@ -97,7 +109,7 @@ public interface ConfigurablePropertyResolver extends PropertyResolver {
 	 * {@link #setRequiredProperties} is present and resolves to a
 	 * non-{@code null} value.
 	 * @throws MissingRequiredPropertiesException if any of the required
-	 * properties are not resolvable.
+	 * properties are not resolvable
 	 */
 	void validateRequiredProperties() throws MissingRequiredPropertiesException;
 

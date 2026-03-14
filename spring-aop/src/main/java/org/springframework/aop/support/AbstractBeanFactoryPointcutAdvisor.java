@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 
 import org.aopalliance.aop.Advice;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
@@ -41,13 +42,13 @@ import org.springframework.util.Assert;
 @SuppressWarnings("serial")
 public abstract class AbstractBeanFactoryPointcutAdvisor extends AbstractPointcutAdvisor implements BeanFactoryAware {
 
-	private String adviceBeanName;
+	private @Nullable String adviceBeanName;
 
-	private BeanFactory beanFactory;
+	private @Nullable BeanFactory beanFactory;
 
-	private transient Advice advice;
+	private transient volatile @Nullable Advice advice;
 
-	private transient volatile Object adviceMonitor = new Object();
+	private transient Object adviceMonitor = new Object();
 
 
 	/**
@@ -58,14 +59,14 @@ public abstract class AbstractBeanFactoryPointcutAdvisor extends AbstractPointcu
 	 * of the advisor.
 	 * @see #getAdvice()
 	 */
-	public void setAdviceBeanName(String adviceBeanName) {
+	public void setAdviceBeanName(@Nullable String adviceBeanName) {
 		this.adviceBeanName = adviceBeanName;
 	}
 
 	/**
 	 * Return the name of the advice bean that this advisor refers to, if any.
 	 */
-	public String getAdviceBeanName() {
+	public @Nullable String getAdviceBeanName() {
 		return this.adviceBeanName;
 	}
 
@@ -74,6 +75,11 @@ public abstract class AbstractBeanFactoryPointcutAdvisor extends AbstractPointcu
 		this.beanFactory = beanFactory;
 	}
 
+	/**
+	 * Specify a particular instance of the target advice directly,
+	 * avoiding lazy resolution in {@link #getAdvice()}.
+	 * @since 3.1
+	 */
 	public void setAdvice(Advice advice) {
 		synchronized (this.adviceMonitor) {
 			this.advice = advice;
@@ -82,18 +88,44 @@ public abstract class AbstractBeanFactoryPointcutAdvisor extends AbstractPointcu
 
 	@Override
 	public Advice getAdvice() {
-		synchronized (this.adviceMonitor) {
-			if (this.advice == null && this.adviceBeanName != null) {
-				Assert.state(this.beanFactory != null, "BeanFactory must be set to resolve 'adviceBeanName'");
-				this.advice = this.beanFactory.getBean(this.adviceBeanName, Advice.class);
+		Advice advice = this.advice;
+		if (advice != null) {
+			return advice;
+		}
+
+		Assert.state(this.adviceBeanName != null, "'adviceBeanName' must be specified");
+		Assert.state(this.beanFactory != null, "BeanFactory must be set to resolve 'adviceBeanName'");
+
+		if (this.beanFactory.isSingleton(this.adviceBeanName)) {
+			// Rely on singleton semantics provided by the factory.
+			advice = this.beanFactory.getBean(this.adviceBeanName, Advice.class);
+			this.advice = advice;
+			return advice;
+		}
+		else {
+			// No singleton guarantees from the factory -> let's lock locally.
+			synchronized (this.adviceMonitor) {
+				advice = this.advice;
+				if (advice == null) {
+					advice = this.beanFactory.getBean(this.adviceBeanName, Advice.class);
+					this.advice = advice;
+				}
+				return advice;
 			}
-			return this.advice;
 		}
 	}
 
 	@Override
 	public String toString() {
-		return getClass().getName() + ": advice bean '" + getAdviceBeanName() + "'";
+		StringBuilder sb = new StringBuilder(getClass().getName());
+		sb.append(": advice ");
+		if (this.adviceBeanName != null) {
+			sb.append("bean '").append(this.adviceBeanName).append('\'');
+		}
+		else {
+			sb.append(this.advice);
+		}
+		return sb.toString();
 	}
 
 

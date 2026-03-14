@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2007 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,16 +16,17 @@
 
 package org.springframework.orm.jpa;
 
-import javax.persistence.EntityManager;
+import jakarta.persistence.EntityManager;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.transaction.SavepointManager;
 import org.springframework.transaction.support.ResourceHolderSupport;
 import org.springframework.util.Assert;
 
 /**
- * Holder wrapping a JPA EntityManager.
- * JpaTransactionManager binds instances of this class to the thread,
- * for a given EntityManagerFactory.
+ * Resource holder wrapping a JPA {@link EntityManager}.
+ * {@link JpaTransactionManager} binds instances of this class to the thread,
+ * for a given {@link jakarta.persistence.EntityManagerFactory}.
  *
  * <p>Note: This is an SPI class, not intended to be used by applications.
  *
@@ -36,21 +37,48 @@ import org.springframework.util.Assert;
  */
 public class EntityManagerHolder extends ResourceHolderSupport {
 
-	private final EntityManager entityManager;
+	protected @Nullable EntityManager entityManager;
+
+	protected @Nullable Object entityAgent;
 
 	private boolean transactionActive;
 
-	private SavepointManager savepointManager;
+	private @Nullable SavepointManager savepointManager;
 
 
-	public EntityManagerHolder(EntityManager entityManager) {
-		Assert.notNull(entityManager, "EntityManager must not be null");
+	public EntityManagerHolder(@Nullable EntityManager entityManager) {
 		this.entityManager = entityManager;
 	}
 
+	EntityManagerHolder(@Nullable Object entityAgent) {
+		this.entityAgent = entityAgent;
+	}
+
+
+	void setEntityManager(EntityManager entityManager) {
+		this.entityManager = entityManager;
+	}
 
 	public EntityManager getEntityManager() {
+		Assert.state(this.entityManager != null, "No EntityManager available");
 		return this.entityManager;
+	}
+
+	void setEntityAgent(Object entityAgent) {
+		this.entityAgent = entityAgent;
+	}
+
+	Object getEntityAgent() {
+		Assert.state(this.entityAgent != null, "No EntityAgent available");
+		return this.entityAgent;
+	}
+
+	boolean hasEntityManager() {
+		return (this.entityManager != null);
+	}
+
+	boolean hasEntityAgent() {
+		return (this.entityAgent != null);
 	}
 
 	protected void setTransactionActive(boolean transactionActive) {
@@ -61,19 +89,27 @@ public class EntityManagerHolder extends ResourceHolderSupport {
 		return this.transactionActive;
 	}
 
-	protected void setSavepointManager(SavepointManager savepointManager) {
+	protected void setSavepointManager(@Nullable SavepointManager savepointManager) {
 		this.savepointManager = savepointManager;
 	}
 
-	protected SavepointManager getSavepointManager() {
+	protected @Nullable SavepointManager getSavepointManager() {
 		return this.savepointManager;
 	}
+
 
 	@Override
 	public void clear() {
 		super.clear();
 		this.transactionActive = false;
 		this.savepointManager = null;
+	}
+
+	protected void closeAll() {
+		EntityManagerFactoryUtils.closeEntityHandler(this.entityManager);
+		EntityManagerFactoryUtils.closeEntityHandler(this.entityAgent);
+		this.entityManager = null;
+		this.entityAgent = null;
 	}
 
 }

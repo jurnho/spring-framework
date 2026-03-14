@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,103 +16,228 @@
 
 package org.springframework.web.servlet.config.annotation;
 
-import java.io.IOException;
-import javax.servlet.ServletException;
-
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.mock.web.test.MockHttpServletRequest;
-import org.springframework.mock.web.test.MockHttpServletResponse;
-import org.springframework.mock.web.test.MockServletConfig;
-import org.springframework.mock.web.test.MockServletContext;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 import org.springframework.web.servlet.DispatcherServlet;
 import org.springframework.web.servlet.view.freemarker.FreeMarkerConfigurer;
 import org.springframework.web.servlet.view.freemarker.FreeMarkerViewResolver;
 import org.springframework.web.servlet.view.groovy.GroovyMarkupConfigurer;
-import org.springframework.web.servlet.view.tiles3.TilesConfigurer;
-import org.springframework.web.servlet.view.velocity.VelocityConfigurer;
+import org.springframework.web.testfixture.servlet.MockHttpServletRequest;
+import org.springframework.web.testfixture.servlet.MockHttpServletResponse;
+import org.springframework.web.testfixture.servlet.MockServletConfig;
+import org.springframework.web.testfixture.servlet.MockServletContext;
 
-import static org.junit.Assert.*;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatRuntimeException;
 
 /**
  * Integration tests for view resolution with {@code @EnableWebMvc}.
  *
  * @author Rossen Stoyanchev
+ * @author Sam Brannen
  * @since 4.1
  */
-public class ViewResolutionIntegrationTests {
+class ViewResolutionIntegrationTests {
 
-	@Rule
-	public final ExpectedException thrown = ExpectedException.none();
+	private static final boolean utf8Default = UTF_8.name().equals(System.getProperty("file.encoding"));
 
 
-	@Test
-	public void freemarker() throws Exception {
-		MockHttpServletResponse response = runTest(FreeMarkerWebConfig.class);
-		assertEquals("<html><body>Hello World!</body></html>", response.getContentAsString());
+	@Nested
+	class FreeMarkerTests {
+
+		private static final String DEFAULT_ENCODING = "ISO-8859-1";
+
+		private static final String EXPECTED_BODY = """
+				<html>
+				<body>
+				<h1>Hello, Java Café</h1>
+				<p>output_encoding: %s</p>
+				</body>
+				</html>
+				""";
+
+		@Test
+		void freemarkerWithInvalidConfig() {
+			assertThatRuntimeException()
+					.isThrownBy(() -> runTest(InvalidFreeMarkerWebConfig.class))
+					.withMessageContaining("In addition to a FreeMarker view resolver ");
+		}
+
+		@Test
+		void freemarkerWithDefaultEncoding() throws Exception {
+			// Since no explicit encoding or content type has been set, we expect ISO-8859-1,
+			// which is the default.
+			if (utf8Default) {
+				runTestAndAssertResults(DEFAULT_ENCODING, FreeMarkerDefaultEncodingConfig.class);
+			}
+		}
+
+		@Test  // gh-16629, gh-33071
+		void freemarkerWithExistingViewResolverWithDefaultEncoding() throws Exception {
+			// Since no explicit encoding or content type has been set, we expect ISO-8859-1,
+			// which is the default.
+			if (utf8Default) {
+				runTestAndAssertResults(DEFAULT_ENCODING, ExistingViewResolverConfig.class);
+			}
+		}
+
+		@Test  // gh-33071, gh-33119
+		void freemarkerWithExplicitDefaultEncoding() throws Exception {
+			// As of Spring Framework 6.2, the charset is automatically updated in the Content-Type, as
+			// long as the user didn't configure the Content-Type directly in the FreeMarkerViewResolver.
+			runTestAndAssertResults("UTF-8", ExplicitDefaultEncodingConfig.class);
+		}
+
+		@Test  // gh-33071
+		void freemarkerWithExplicitDefaultEncodingAndContentType() throws Exception {
+			// When the Content-Type is explicitly set on the view resolver, it should be used.
+			runTestAndAssertResults("UTF-16", ExplicitDefaultEncodingAndContentTypeConfig.class);
+		}
+
+
+		private static void runTestAndAssertResults(String encoding, Class<?> configClass) throws Exception {
+			MockHttpServletResponse response = runTest(configClass);
+			assertThat(response.isCharset()).as("character encoding set in response").isTrue();
+			assertThat(response.getContentAsString()).isEqualTo(EXPECTED_BODY.formatted(encoding));
+			assertThat(response.getCharacterEncoding()).isEqualTo(encoding);
+			assertThat(response.getContentType()).isEqualTo("text/html;charset=" + encoding);
+		}
+
+
+		@Configuration
+		static class InvalidFreeMarkerWebConfig extends WebMvcConfigurationSupport {
+
+			@Override
+			public void configureViewResolvers(ViewResolverRegistry registry) {
+				registry.freeMarker();
+			}
+		}
+
+		@Configuration
+		static class FreeMarkerDefaultEncodingConfig extends AbstractWebConfig {
+
+			@Override
+			public void configureViewResolvers(ViewResolverRegistry registry) {
+				registry.freeMarker();
+			}
+
+			@Bean
+			public FreeMarkerConfigurer freeMarkerConfigurer() {
+				FreeMarkerConfigurer configurer = new FreeMarkerConfigurer();
+				configurer.setTemplateLoaderPath("/WEB-INF/");
+				return configurer;
+			}
+		}
+
+		@Configuration
+		static class ExistingViewResolverConfig extends AbstractWebConfig {
+
+			@Bean
+			public FreeMarkerViewResolver freeMarkerViewResolver() {
+				return new FreeMarkerViewResolver("", ".ftl");
+			}
+
+			@Bean
+			public FreeMarkerConfigurer freeMarkerConfigurer() {
+				FreeMarkerConfigurer configurer = new FreeMarkerConfigurer();
+				configurer.setTemplateLoaderPath("/WEB-INF/");
+				return configurer;
+			}
+		}
+
+		@Configuration
+		static class ExplicitDefaultEncodingConfig extends AbstractWebConfig {
+
+			@Override
+			public void configureViewResolvers(ViewResolverRegistry registry) {
+				registry.freeMarker();
+			}
+
+			@Bean
+			public FreeMarkerConfigurer freeMarkerConfigurer() {
+				FreeMarkerConfigurer configurer = new FreeMarkerConfigurer();
+				configurer.setTemplateLoaderPath("/WEB-INF/");
+				configurer.setDefaultCharset(UTF_8);
+				return configurer;
+			}
+		}
+
+		@Configuration
+		static class ExplicitDefaultEncodingAndContentTypeConfig extends AbstractWebConfig {
+
+			@Bean
+			public FreeMarkerViewResolver freeMarkerViewResolver() {
+				FreeMarkerViewResolver resolver = new FreeMarkerViewResolver("", ".ftl");
+				resolver.setContentType("text/html;charset=UTF-16");
+				return resolver;
+			}
+
+			@Bean
+			public FreeMarkerConfigurer freeMarkerConfigurer() {
+				FreeMarkerConfigurer configurer = new FreeMarkerConfigurer();
+				configurer.setTemplateLoaderPath("/WEB-INF/");
+				configurer.setDefaultCharset(UTF_8);
+				return configurer;
+			}
+		}
 	}
 
-	@Test
-	public void velocity() throws Exception {
-		MockHttpServletResponse response = runTest(VelocityWebConfig.class);
-		assertEquals("<html><body>Hello World!</body></html>", response.getContentAsString());
-	}
 
-	@Test
-	public void tiles() throws Exception {
-		MockHttpServletResponse response = runTest(TilesWebConfig.class);
-		assertEquals("/WEB-INF/index.jsp", response.getForwardedUrl());
-	}
+	@Nested
+	class GroovyMarkupTests {
 
-	@Test
-	public void groovyMarkup() throws Exception {
-		MockHttpServletResponse response = runTest(GroovyMarkupWebConfig.class);
-		assertEquals("<html><body>Hello World!</body></html>", response.getContentAsString());
-	}
+		@Test
+		void groovyMarkupInvalidConfig() {
+			assertThatRuntimeException()
+					.isThrownBy(() -> runTest(InvalidGroovyMarkupWebConfig.class))
+					.withMessageContaining("In addition to a Groovy markup view resolver ");
+		}
 
-	@Test
-	public void freemarkerInvalidConfig() throws Exception {
-		this.thrown.expectMessage("In addition to a FreeMarker view resolver ");
-		runTest(InvalidFreeMarkerWebConfig.class);
-	}
+		@Test
+		void groovyMarkup() throws Exception {
+			MockHttpServletResponse response = runTest(GroovyMarkupWebConfig.class);
+			if (utf8Default) {
+				assertThat(response.getContentAsString()).isEqualTo("<html><body>Hello, Java Café</body></html>");
+			}
+		}
 
-	@Test
-	public void velocityInvalidConfig() throws Exception {
-		this.thrown.expectMessage("In addition to a Velocity view resolver ");
-		runTest(InvalidVelocityWebConfig.class);
-	}
 
-	@Test
-	public void tilesInvalidConfig() throws Exception {
-		this.thrown.expectMessage("In addition to a Tiles view resolver ");
-		runTest(InvalidTilesWebConfig.class);
-	}
+		@Configuration
+		static class InvalidGroovyMarkupWebConfig extends WebMvcConfigurationSupport {
 
-	@Test
-	public void groovyMarkupInvalidConfig() throws Exception {
-		this.thrown.expectMessage("In addition to a Groovy markup view resolver ");
-		runTest(InvalidGroovyMarkupWebConfig.class);
-	}
+			@Override
+			public void configureViewResolvers(ViewResolverRegistry registry) {
+				registry.groovy();
+			}
+		}
 
-	// SPR-12013
+		@Configuration
+		static class GroovyMarkupWebConfig extends AbstractWebConfig {
 
-	@Test
-	public void existingViewResolver() throws Exception {
-		MockHttpServletResponse response = runTest(ExistingViewResolverConfig.class);
-		assertEquals("<html><body>Hello World!</body></html>", response.getContentAsString());
+			@Override
+			public void configureViewResolvers(ViewResolverRegistry registry) {
+				registry.groovy();
+			}
+
+			@Bean
+			public GroovyMarkupConfigurer groovyMarkupConfigurer() {
+				GroovyMarkupConfigurer configurer = new GroovyMarkupConfigurer();
+				configurer.setResourceLoaderPath("/WEB-INF/");
+				return configurer;
+			}
+		}
 	}
 
 
-	private MockHttpServletResponse runTest(Class<?> configClass) throws ServletException, IOException {
+	private static MockHttpServletResponse runTest(Class<?> configClass) throws Exception {
 		String basePath = "org/springframework/web/servlet/config/annotation";
 		MockServletContext servletContext = new MockServletContext(basePath);
 		MockServletConfig servletConfig = new MockServletConfig(servletContext);
@@ -133,138 +258,19 @@ public class ViewResolutionIntegrationTests {
 	@Controller
 	static class SampleController {
 
-		@RequestMapping(value = "/", method = RequestMethod.GET)
-		public String sample(ModelMap model) {
-			model.addAttribute("hello", "Hello World!");
+		@GetMapping
+		String index(ModelMap model) {
+			model.put("hello", "Hello");
 			return "index";
 		}
 	}
 
 	@EnableWebMvc
-	static abstract class AbstractWebConfig extends WebMvcConfigurerAdapter {
+	abstract static class AbstractWebConfig implements WebMvcConfigurer {
 
 		@Bean
 		public SampleController sampleController() {
 			return new SampleController();
-		}
-	}
-
-	@Configuration
-	static class FreeMarkerWebConfig extends AbstractWebConfig {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.freeMarker();
-		}
-
-		@Bean
-		public FreeMarkerConfigurer freeMarkerConfigurer() {
-			FreeMarkerConfigurer configurer = new FreeMarkerConfigurer();
-			configurer.setTemplateLoaderPath("/WEB-INF/");
-			return configurer;
-		}
-	}
-
-	@Configuration
-	static class VelocityWebConfig extends AbstractWebConfig {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.velocity();
-		}
-
-		@Bean
-		public VelocityConfigurer velocityConfigurer() {
-			VelocityConfigurer configurer = new VelocityConfigurer();
-			configurer.setResourceLoaderPath("/WEB-INF/");
-			return configurer;
-		}
-	}
-
-	@Configuration
-	static class TilesWebConfig extends AbstractWebConfig {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.tiles();
-		}
-
-		@Bean
-		public TilesConfigurer tilesConfigurer() {
-			TilesConfigurer configurer = new TilesConfigurer();
-			configurer.setDefinitions("/WEB-INF/tiles.xml");
-			return configurer;
-		}
-	}
-
-	@Configuration
-	static class GroovyMarkupWebConfig extends AbstractWebConfig {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.groovy();
-		}
-
-		@Bean
-		public GroovyMarkupConfigurer groovyMarkupConfigurer() {
-			GroovyMarkupConfigurer configurer = new GroovyMarkupConfigurer();
-			configurer.setResourceLoaderPath("/WEB-INF/");
-			return configurer;
-		}
-	}
-
-	@Configuration
-	static class InvalidFreeMarkerWebConfig extends WebMvcConfigurationSupport {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.freeMarker();
-		}
-	}
-
-	@Configuration
-	static class InvalidVelocityWebConfig extends WebMvcConfigurationSupport {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.velocity();
-		}
-	}
-
-	@Configuration
-	static class InvalidTilesWebConfig extends WebMvcConfigurationSupport {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.tiles();
-		}
-	}
-
-	@Configuration
-	static class InvalidGroovyMarkupWebConfig extends WebMvcConfigurationSupport {
-
-		@Override
-		public void configureViewResolvers(ViewResolverRegistry registry) {
-			registry.groovy();
-		}
-	}
-
-	/**
-	 * Test @EnableWebMvc in the presence of pre-existing ViewResolver.
-	 */
-	@Configuration
-	static class ExistingViewResolverConfig extends AbstractWebConfig {
-
-		@Bean
-		public FreeMarkerViewResolver freeMarkerViewResolver() {
-			return new FreeMarkerViewResolver("", ".ftl");
-		}
-
-		@Bean
-		public FreeMarkerConfigurer freeMarkerConfigurer() {
-			FreeMarkerConfigurer configurer = new FreeMarkerConfigurer();
-			configurer.setTemplateLoaderPath("/WEB-INF/");
-			return configurer;
 		}
 	}
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.test.annotation;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * <p>
@@ -38,7 +40,11 @@ package org.springframework.test.annotation;
  * @see ProfileValueSourceConfiguration
  * @see IfProfileValue
  * @see ProfileValueUtils
+ * @deprecated since Spring Framework 7.0 in favor of the
+ * {@link org.springframework.test.context.junit.jupiter.SpringExtension SpringExtension}
+ * and JUnit Jupiter
  */
+@Deprecated(since = "7.0")
 public interface ProfileValueSource {
 
 	/**
@@ -47,6 +53,6 @@ public interface ProfileValueSource {
 	 * @return the String value of the <em>profile value</em>, or {@code null}
 	 * if there is no <em>profile value</em> with that key
 	 */
-	String get(String key);
+	@Nullable String get(String key);
 
 }

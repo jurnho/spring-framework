@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,14 +21,17 @@ import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.TypeDescriptor;
 import org.springframework.core.convert.converter.ConditionalGenericConverter;
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
 
 /**
- * Converts an entity identifier to a entity reference by calling a static finder method
+ * Converts an entity identifier to an entity reference by calling a static finder method
  * on the target entity type.
  *
  * <p>For this converter to match, the finder method must be static, have the signature
@@ -61,18 +64,18 @@ final class IdToEntityConverter implements ConditionalGenericConverter {
 	}
 
 	@Override
-	public Object convert(Object source, TypeDescriptor sourceType, TypeDescriptor targetType) {
+	public @Nullable Object convert(@Nullable Object source, TypeDescriptor sourceType, TypeDescriptor targetType) {
 		if (source == null) {
 			return null;
 		}
 		Method finder = getFinder(targetType.getType());
+		Assert.state(finder != null, "No finder method");
 		Object id = this.conversionService.convert(
 				source, sourceType, TypeDescriptor.valueOf(finder.getParameterTypes()[0]));
 		return ReflectionUtils.invokeMethod(finder, source, id);
 	}
 
-
-	private Method getFinder(Class<?> entityClass) {
+	private @Nullable Method getFinder(Class<?> entityClass) {
 		String finderMethod = "find" + getEntityName(entityClass);
 		Method[] methods;
 		boolean localOnlyFiltered;
@@ -88,7 +91,7 @@ final class IdToEntityConverter implements ConditionalGenericConverter {
 		}
 		for (Method method : methods) {
 			if (Modifier.isStatic(method.getModifiers()) && method.getName().equals(finderMethod) &&
-					method.getParameterTypes().length == 1 && method.getReturnType().equals(entityClass) &&
+					method.getParameterCount() == 1 && method.getReturnType().equals(entityClass) &&
 					(localOnlyFiltered || method.getDeclaringClass().equals(entityClass))) {
 				return method;
 			}

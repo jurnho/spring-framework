@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,43 +18,66 @@ package org.springframework.jdbc.object;
 
 import java.util.Map;
 
-import org.springframework.dao.InvalidDataAccessResourceUsageException;
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.beans.BeanUtils;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.util.Assert;
 
-public class GenericSqlQuery<T> extends SqlQuery<T> {
+/**
+ * A concrete variant of {@link SqlQuery} which can be configured
+ * with a {@link RowMapper}.
+ *
+ * @author Thomas Risberg
+ * @author Juergen Hoeller
+ * @since 3.0
+ * @param <T> the result type
+ * @see #setRowMapper
+ * @see #setRowMapperClass
+ */
+public class GenericSqlQuery<T extends @Nullable Object> extends SqlQuery<T> {
 
-	Class<?> rowMapperClass;
-
-	RowMapper<?> rowMapper;
+	private @Nullable RowMapper<T> rowMapper;
 
 	@SuppressWarnings("rawtypes")
-	public void setRowMapperClass(Class<? extends RowMapper> rowMapperClass)
-			throws IllegalAccessException, InstantiationException {
+	private @Nullable Class<? extends RowMapper> rowMapperClass;
+
+
+	/**
+	 * Set a specific {@link RowMapper} instance to use for this query.
+	 * @since 4.3.2
+	 */
+	public void setRowMapper(RowMapper<T> rowMapper) {
+		this.rowMapper = rowMapper;
+	}
+
+	/**
+	 * Set a {@link RowMapper} class for this query, creating a fresh
+	 * {@link RowMapper} instance per execution.
+	 */
+	@SuppressWarnings("rawtypes")
+	public void setRowMapperClass(Class<? extends RowMapper> rowMapperClass) {
 		this.rowMapperClass = rowMapperClass;
-		if (!RowMapper.class.isAssignableFrom(rowMapperClass))
-			throw new IllegalStateException("The specified class '" +
-					rowMapperClass.getName() + " is not a sub class of " +
-					"'org.springframework.jdbc.core.RowMapper'");
 	}
 
 	@Override
 	public void afterPropertiesSet() {
 		super.afterPropertiesSet();
-		Assert.notNull(rowMapperClass, "The 'rowMapperClass' property is required");
+		Assert.isTrue(this.rowMapper != null || this.rowMapperClass != null,
+				"'rowMapper' or 'rowMapperClass' is required");
 	}
+
 
 	@Override
 	@SuppressWarnings("unchecked")
-	protected RowMapper<T> newRowMapper(Object[] parameters, Map<?, ?> context) {
-		try {
-			return (RowMapper<T>) rowMapperClass.newInstance();
+	protected RowMapper<T> newRowMapper(@Nullable Object @Nullable [] parameters, @Nullable Map<?, ?> context) {
+		if (this.rowMapper != null) {
+			return this.rowMapper;
 		}
-		catch (InstantiationException e) {
-			throw new InvalidDataAccessResourceUsageException("Unable to instantiate RowMapper", e);
-		}
-		catch (IllegalAccessException e) {
-			throw new InvalidDataAccessResourceUsageException("Unable to instantiate RowMapper", e);
+		else {
+			Assert.state(this.rowMapperClass != null, "No RowMapper set");
+			return BeanUtils.instantiateClass(this.rowMapperClass);
 		}
 	}
+
 }

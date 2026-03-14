@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.core.io.support;
 
 import java.util.Locale;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
@@ -32,7 +34,7 @@ import org.springframework.util.Assert;
  */
 public class LocalizedResourceHelper {
 
-	/** The default separator to use inbetween file name parts: an underscore */
+	/** The default separator to use in-between file name parts: an underscore. */
 	public static final String DEFAULT_SEPARATOR = "_";
 
 
@@ -59,10 +61,10 @@ public class LocalizedResourceHelper {
 	}
 
 	/**
-	 * Set the separator to use inbetween file name parts.
+	 * Set the separator to use in-between file name parts.
 	 * Default is an underscore ("_").
 	 */
-	public void setSeparator(String separator) {
+	public void setSeparator(@Nullable String separator) {
 		this.separator = (separator != null ? separator : DEFAULT_SEPARATOR);
 	}
 
@@ -81,12 +83,12 @@ public class LocalizedResourceHelper {
 	 * <p>If none of the specific files can be found, a resource
 	 * descriptor for the default location will be returned.
 	 * @param name the name of the file, without localization part nor extension
-	 * @param extension the file extension (e.g. ".xls")
+	 * @param extension the file extension (for example, ".xls")
 	 * @param locale the current locale (may be {@code null})
 	 * @return the most specific localized resource found
 	 * @see java.util.ResourceBundle
 	 */
-	public Resource findLocalizedResource(String name, String extension, Locale locale) {
+	public Resource findLocalizedResource(String name, String extension, @Nullable Locale locale) {
 		Assert.notNull(name, "Name must not be null");
 		Assert.notNull(extension, "Extension must not be null");
 

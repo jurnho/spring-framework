@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,11 +18,11 @@ package org.springframework.format.datetime.standard;
 
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
-import java.time.format.ResolverStyle;
 import java.util.TimeZone;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.format.annotation.DateTimeFormat.ISO;
-import org.springframework.lang.UsesJava8;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
@@ -34,6 +34,7 @@ import org.springframework.util.StringUtils;
  *
  * @author Juergen Hoeller
  * @author Phillip Webb
+ * @author Sam Brannen
  * @since 4.0
  * @see #createDateTimeFormatter()
  * @see #createDateTimeFormatter(DateTimeFormatter)
@@ -44,18 +45,17 @@ import org.springframework.util.StringUtils;
  * @see #setDateTimeStyle
  * @see DateTimeFormatterFactoryBean
  */
-@UsesJava8
 public class DateTimeFormatterFactory {
 
-	private String pattern;
+	private @Nullable String pattern;
 
-	private ISO iso;
+	private @Nullable ISO iso;
 
-	private FormatStyle dateStyle;
+	private @Nullable FormatStyle dateStyle;
 
-	private FormatStyle timeStyle;
+	private @Nullable FormatStyle timeStyle;
 
-	private TimeZone timeZone;
+	private @Nullable TimeZone timeZone;
 
 
 	/**
@@ -112,7 +112,7 @@ public class DateTimeFormatterFactory {
 	}
 
 	/**
-	 * Set the two characters to use to format date values, in Joda-Time style.
+	 * Set the two characters to use to format date values.
 	 * <p>The first character is used for the date style; the second is for
 	 * the time style. Supported characters are:
 	 * <ul>
@@ -122,26 +122,26 @@ public class DateTimeFormatterFactory {
 	 * <li>'F' = Full</li>
 	 * <li>'-' = Omitted</li>
 	 * </ul>
-	 * <p>This method mimics the styles supported by Joda-Time. Note that
-	 * JSR-310 natively favors {@link java.time.format.FormatStyle} as used for
-	 * {@link #setDateStyle}, {@link #setTimeStyle} and {@link #setDateTimeStyle}.
+	 * <p>Note that JSR-310 natively favors {@link java.time.format.FormatStyle}
+	 * as used for {@link #setDateStyle}, {@link #setTimeStyle}, and
+	 * {@link #setDateTimeStyle}.
 	 * @param style two characters from the set {"S", "M", "L", "F", "-"}
 	 */
 	public void setStylePattern(String style) {
-		Assert.isTrue(style != null && style.length() == 2);
+		Assert.isTrue(style.length() == 2, "Style pattern must consist of two characters");
 		this.dateStyle = convertStyleCharacter(style.charAt(0));
 		this.timeStyle = convertStyleCharacter(style.charAt(1));
 	}
 
-	private FormatStyle convertStyleCharacter(char c) {
-		switch (c) {
-			case 'S': return FormatStyle.SHORT;
-			case 'M': return FormatStyle.MEDIUM;
-			case 'L': return FormatStyle.LONG;
-			case 'F': return FormatStyle.FULL;
-			case '-': return null;
-			default: throw new IllegalArgumentException("Invalid style character '" + c + "'");
-		}
+	private @Nullable FormatStyle convertStyleCharacter(char c) {
+		return switch (c) {
+			case 'S' -> FormatStyle.SHORT;
+			case 'M' -> FormatStyle.MEDIUM;
+			case 'L' -> FormatStyle.LONG;
+			case 'F' -> FormatStyle.FULL;
+			case '-' -> null;
+			default -> throw new IllegalArgumentException("Invalid style character '" + c + "'");
+		};
 	}
 
 	/**
@@ -168,36 +168,22 @@ public class DateTimeFormatterFactory {
 	 * Create a new {@code DateTimeFormatter} using this factory.
 	 * <p>If no specific pattern or style has been defined,
 	 * the supplied {@code fallbackFormatter} will be used.
-	 * @param fallbackFormatter the fall-back formatter to use when no specific
-	 * factory properties have been set (can be {@code null}).
+	 * @param fallbackFormatter the fall-back formatter to use
+	 * when no specific factory properties have been set
 	 * @return a new date time formatter
 	 */
 	public DateTimeFormatter createDateTimeFormatter(DateTimeFormatter fallbackFormatter) {
 		DateTimeFormatter dateTimeFormatter = null;
 		if (StringUtils.hasLength(this.pattern)) {
-			// Using strict parsing to align with Joda-Time and standard DateFormat behavior:
-			// otherwise, an overflow like e.g. Feb 29 for a non-leap-year wouldn't get rejected.
-			// However, with strict parsing, a year digit needs to be specified as 'u'...
-			String patternToUse = this.pattern.replace("yy", "uu");
-			dateTimeFormatter = DateTimeFormatter.ofPattern(patternToUse).withResolverStyle(ResolverStyle.STRICT);
+			dateTimeFormatter = DateTimeFormatterUtils.createStrictDateTimeFormatter(this.pattern);
 		}
 		else if (this.iso != null && this.iso != ISO.NONE) {
-			switch (this.iso) {
-				case DATE:
-					dateTimeFormatter = DateTimeFormatter.ISO_DATE;
-					break;
-				case TIME:
-					dateTimeFormatter = DateTimeFormatter.ISO_TIME;
-					break;
-				case DATE_TIME:
-					dateTimeFormatter = DateTimeFormatter.ISO_DATE_TIME;
-					break;
-				case NONE:
-					/* no-op */
-					break;
-				default:
-					throw new IllegalStateException("Unsupported ISO format: " + this.iso);
-			}
+			dateTimeFormatter = switch (this.iso) {
+				case DATE -> DateTimeFormatter.ISO_DATE;
+				case TIME -> DateTimeFormatter.ISO_TIME;
+				case DATE_TIME -> DateTimeFormatter.ISO_DATE_TIME;
+				default -> throw new IllegalStateException("Unsupported ISO format: " + this.iso);
+			};
 		}
 		else if (this.dateStyle != null && this.timeStyle != null) {
 			dateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(this.dateStyle, this.timeStyle);

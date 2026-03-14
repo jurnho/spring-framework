@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2008 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,78 +16,178 @@
 
 package org.springframework.jdbc.support;
 
+import java.sql.BatchUpdateException;
 import java.sql.SQLException;
 
-import org.junit.Test;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
 
-import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.jdbc.BadSqlGrammarException;
-import org.springframework.jdbc.UncategorizedSQLException;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
+ * Tests for {@link SQLStateSQLExceptionTranslator}.
+ *
  * @author Rick Evans
  * @author Juergen Hoeller
  * @author Chris Beams
  */
-public class SQLStateSQLExceptionTranslatorTests {
+class SQLStateSQLExceptionTranslatorTests {
 
-	private static final String REASON = "The game is afoot!";
-
-	private static final String TASK = "Counting sheep... yawn.";
-
-	private static final String SQL = "select count(0) from t_sheep where over_fence = ... yawn... 1";
+	private final SQLExceptionTranslator translator = new SQLStateSQLExceptionTranslator();
 
 
-	@Test(expected=IllegalArgumentException.class)
-	public void testTranslateNullException() throws Exception {
-		new SQLStateSQLExceptionTranslator().translate("", "", null);
+	@Test
+	void translateNullException() {
+		assertThatIllegalArgumentException().isThrownBy(() -> translator.translate("", "", null));
 	}
 
 	@Test
-	public void testTranslateBadSqlGrammar() throws Exception {
-		doTest("07", BadSqlGrammarException.class);
+	void translateBadSqlGrammar() {
+		assertTranslation("07", BadSqlGrammarException.class);
 	}
 
 	@Test
-	public void testTranslateDataIntegrityViolation() throws Exception {
-		doTest("23", DataIntegrityViolationException.class);
+	void translateDataIntegrityViolation() {
+		assertTranslation("23", DataIntegrityViolationException.class);
 	}
 
 	@Test
-	public void testTranslateDataAccessResourceFailure() throws Exception {
-		doTest("53", DataAccessResourceFailureException.class);
+	void translateDuplicateKey() {
+		assertTranslation("23505", DuplicateKeyException.class);
 	}
 
 	@Test
-	public void testTranslateTransientDataAccessResourceFailure() throws Exception {
-		doTest("S1", TransientDataAccessResourceException.class);
+	void translateDuplicateKeyOracle() {
+		assertTranslation("23000", 1, DuplicateKeyException.class);
 	}
 
 	@Test
-	public void testTranslateConcurrencyFailure() throws Exception {
-		doTest("40", ConcurrencyFailureException.class);
+	void translateDuplicateKeyMySQL() {
+		assertTranslation("23000", 1062, DuplicateKeyException.class);
 	}
 
 	@Test
-	public void testTranslateUncategorized() throws Exception {
-		doTest("00000000", UncategorizedSQLException.class);
+	void translateDuplicateKeyMSSQL1() {
+		assertTranslation("23000", 2601, DuplicateKeyException.class);
+	}
+
+	@Test
+	void translateDuplicateKeyMSSQL2() {
+		assertTranslation("23000", 2627, DuplicateKeyException.class);
+	}
+
+	@Test  // gh-31554
+	void translateDuplicateKeySapHana() {
+		assertTranslation("23000", 301, DuplicateKeyException.class);
+	}
+
+	@Test
+	void translateDuplicateKeyInformix1() {
+		assertTranslation("23000", -239, DuplicateKeyException.class);
+	}
+
+	@Test
+	void translateDuplicateKeyInformix2() {
+		assertTranslation("23000", -268, DuplicateKeyException.class);
+	}
+
+	@Test
+	void translateDataAccessResourceFailure() {
+		assertTranslation("53", DataAccessResourceFailureException.class);
+	}
+
+	@Test
+	void translateTransientDataAccessResourceFailure() {
+		assertTranslation("S1", TransientDataAccessResourceException.class);
+	}
+
+	@Test
+	void translatePessimisticLockingFailure() {
+		assertTranslation("40", PessimisticLockingFailureException.class);
+	}
+
+	@Test
+	void translateCannotAcquireLock() {
+		assertTranslation("40001", CannotAcquireLockException.class);
+	}
+
+	@Test
+	void translateQueryTimeout() {
+		assertTranslation("57014", QueryTimeoutException.class);
+	}
+
+	@Test
+	void translateWithinQualifiedBatch() {
+		assertTranslation(buildBatchUpdateException("JZ", new SQLException("", "23505", 0)), DuplicateKeyException.class);
+	}
+
+	@Test
+	void translateWithinUnqualifiedBatch() {
+		assertTranslation(buildBatchUpdateException(null, new SQLException("", "23505", 0)), DuplicateKeyException.class);
+	}
+
+	@Test
+	void translateUncategorized() {
+		assertTranslation("00000000", null);
+	}
+
+	@Test
+	void invalidSqlStateCode() {
+		assertTranslation("NO SUCH CODE", null);
+	}
+
+	/**
+	 * PostgreSQL can return null.
+	 * SAP DB can apparently return empty SQL code.
+	 * Bug 729170
+	 */
+	@Test
+	void malformedSqlStateCodes() {
+		assertTranslation((String) null, null);
+		assertTranslation("", null);
+		assertTranslation("I", null);
 	}
 
 
-	private void doTest(String sqlState, Class<?> dataAccessExceptionType) {
-		SQLException ex = new SQLException(REASON, sqlState);
-		SQLExceptionTranslator translator = new SQLStateSQLExceptionTranslator();
-		DataAccessException dax = translator.translate(TASK, SQL, ex);
-		assertNotNull("Translation must *never* result in a null DataAccessException being returned.", dax);
-		assertEquals("Wrong DataAccessException type returned as the result of the translation", dataAccessExceptionType, dax.getClass());
-		assertNotNull("The original SQLException must be preserved in the translated DataAccessException", dax.getCause());
-		assertSame("The exact same original SQLException must be preserved in the translated DataAccessException", ex, dax.getCause());
+	private void assertTranslation(@Nullable String sqlState, @Nullable Class<?> dataAccessExceptionType) {
+		assertTranslation(new SQLException("reason", sqlState, 0), dataAccessExceptionType);
+	}
+
+	private void assertTranslation(@Nullable String sqlState, int errorCode, @Nullable Class<?> dataAccessExceptionType) {
+		assertTranslation(new SQLException("reason", sqlState, errorCode), dataAccessExceptionType);
+	}
+
+	private void assertTranslation(SQLException ex, @Nullable Class<?> dataAccessExceptionType) {
+		DataAccessException dae = translator.translate("task", "SQL", ex);
+
+		if (dataAccessExceptionType == null) {
+			assertThat(dae).as("Expected translation to null").isNull();
+			return;
+		}
+		assertTranslation(dae, ex, dataAccessExceptionType);
+	}
+
+	static void assertTranslation(DataAccessException dae, SQLException ex, Class<?> dataAccessExceptionType) {
+		assertThat(dae).as("Specific translation must not result in null").isNotNull();
+		assertThat(dae).as("Wrong DataAccessException type returned").isExactlyInstanceOf(dataAccessExceptionType);
+		assertThat(dae.getCause()).as("The exact same original SQLException must be preserved").isSameAs(ex);
+	}
+
+	static BatchUpdateException buildBatchUpdateException(@Nullable String sqlState, SQLException next) {
+		BatchUpdateException ex = new BatchUpdateException("", sqlState, null);
+		ex.setNextException(next);
+		return ex;
 	}
 
 }

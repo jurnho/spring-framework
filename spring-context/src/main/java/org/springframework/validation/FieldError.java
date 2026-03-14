@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.validation;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
@@ -36,7 +38,7 @@ public class FieldError extends ObjectError {
 
 	private final String field;
 
-	private final Object rejectedValue;
+	private final @Nullable Object rejectedValue;
 
 	private final boolean bindingFailure;
 
@@ -62,9 +64,8 @@ public class FieldError extends ObjectError {
 	 * @param arguments the array of arguments to be used to resolve this message
 	 * @param defaultMessage the default message to be used to resolve this message
 	 */
-	public FieldError(
-			String objectName, String field, Object rejectedValue, boolean bindingFailure,
-			String[] codes, Object[] arguments, String defaultMessage) {
+	public FieldError(String objectName, String field, @Nullable Object rejectedValue, boolean bindingFailure,
+			String @Nullable [] codes, Object @Nullable [] arguments, @Nullable String defaultMessage) {
 
 		super(objectName, codes, arguments, defaultMessage);
 		Assert.notNull(field, "Field must not be null");
@@ -84,7 +85,7 @@ public class FieldError extends ObjectError {
 	/**
 	 * Return the rejected field value.
 	 */
-	public Object getRejectedValue() {
+	public @Nullable Object getRejectedValue() {
 		return this.rejectedValue;
 	}
 
@@ -98,21 +99,14 @@ public class FieldError extends ObjectError {
 
 
 	@Override
-	public String toString() {
-		return "Field error in object '" + getObjectName() + "' on field '" + this.field +
-				"': rejected value [" + this.rejectedValue + "]; " + resolvableToString();
-	}
-
-	@Override
-	public boolean equals(Object other) {
+	public boolean equals(@Nullable Object other) {
 		if (this == other) {
 			return true;
 		}
 		if (!super.equals(other)) {
 			return false;
 		}
-		FieldError otherError = (FieldError) other;
-		return (getField().equals(otherError.getField()) &&
+		return (other instanceof FieldError otherError && getField().equals(otherError.getField()) &&
 				ObjectUtils.nullSafeEquals(getRejectedValue(), otherError.getRejectedValue()) &&
 				isBindingFailure() == otherError.isBindingFailure());
 	}
@@ -124,6 +118,15 @@ public class FieldError extends ObjectError {
 		hashCode = 29 * hashCode + ObjectUtils.nullSafeHashCode(getRejectedValue());
 		hashCode = 29 * hashCode + (isBindingFailure() ? 1 : 0);
 		return hashCode;
+	}
+
+	@Override
+	public String toString() {
+		// We would preferably use ObjectUtils.nullSafeConciseToString(rejectedValue) here but
+		// keep including the full nullSafeToString representation for backwards compatibility.
+		return "Field error in object '" + getObjectName() + "' on field '" + this.field +
+				"': rejected value [" + ObjectUtils.nullSafeToString(this.rejectedValue) + "]; " +
+				resolvableToString();
 	}
 
 }

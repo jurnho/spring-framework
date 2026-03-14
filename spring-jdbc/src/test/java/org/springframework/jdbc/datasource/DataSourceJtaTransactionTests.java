@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,17 +21,17 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import javax.sql.DataSource;
-import javax.transaction.RollbackException;
-import javax.transaction.Status;
-import javax.transaction.SystemException;
-import javax.transaction.Transaction;
-import javax.transaction.TransactionManager;
-import javax.transaction.UserTransaction;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import javax.sql.DataSource;
+
+import jakarta.transaction.Status;
+import jakarta.transaction.SystemException;
+import jakarta.transaction.Transaction;
+import jakarta.transaction.TransactionManager;
+import jakarta.transaction.UserTransaction;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.jdbc.datasource.lookup.BeanFactoryDataSourceLookup;
@@ -46,51 +46,60 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import static org.junit.Assert.*;
-import static org.mockito.BDDMockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * @author Juergen Hoeller
  * @since 17.10.2005
  */
-public class DataSourceJtaTransactionTests {
+class DataSourceJtaTransactionTests {
 
-	private Connection connection;
-	private DataSource dataSource;
-	private UserTransaction userTransaction;
-	private TransactionManager transactionManager;
-	private Transaction transaction;
+	private DataSource dataSource = mock();
 
-	@Before
-	public void setup() throws Exception {
-		connection =mock(Connection.class);
-		dataSource = mock(DataSource.class);
-		userTransaction = mock(UserTransaction.class);
-		transactionManager = mock(TransactionManager.class);
-		transaction = mock(Transaction.class);
+	private Connection connection = mock();
+
+	private UserTransaction userTransaction = mock();
+
+	private TransactionManager transactionManager = mock();
+
+	private Transaction transaction = mock();
+
+
+	@BeforeEach
+	void setup() throws Exception {
 		given(dataSource.getConnection()).willReturn(connection);
 	}
 
-	@After
-	public void verifyTransactionSynchronizationManagerState() {
-		assertTrue(TransactionSynchronizationManager.getResourceMap().isEmpty());
-		assertFalse(TransactionSynchronizationManager.isSynchronizationActive());
-		assertNull(TransactionSynchronizationManager.getCurrentTransactionName());
-		assertFalse(TransactionSynchronizationManager.isCurrentTransactionReadOnly());
-		assertNull(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel());
-		assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+	@AfterEach
+	void verifyTransactionSynchronizationManagerState() {
+		assertThat(TransactionSynchronizationManager.getResourceMap()).isEmpty();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
+		assertThat(TransactionSynchronizationManager.getCurrentTransactionName()).isNull();
+		assertThat(TransactionSynchronizationManager.isCurrentTransactionReadOnly()).isFalse();
+		assertThat(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel()).isNull();
+		assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
 	}
 
+
 	@Test
-	public void testJtaTransactionCommit() throws Exception {
+	void jtaTransactionCommit() throws Exception {
 		doTestJtaTransaction(false);
 	}
 
 	@Test
-	public void testJtaTransactionRollback() throws Exception {
+	void jtaTransactionRollback() throws Exception {
 		doTestJtaTransaction(true);
 	}
 
+	@SuppressWarnings("deprecation")
 	private void doTestJtaTransaction(final boolean rollback) throws Exception {
 		if (rollback) {
 			given(userTransaction.getStatus()).willReturn(
@@ -103,23 +112,23 @@ public class DataSourceJtaTransactionTests {
 
 		JtaTransactionManager ptm = new JtaTransactionManager(userTransaction);
 		TransactionTemplate tt = new TransactionTemplate(ptm);
-		assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dataSource));
-		assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isFalse();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 
 		tt.execute(new TransactionCallbackWithoutResult() {
 			@Override
 			protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-				assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dataSource));
-				assertTrue("JTA synchronizations active", TransactionSynchronizationManager.isSynchronizationActive());
-				assertTrue("Is new transaction", status.isNewTransaction());
+				assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isFalse();
+				assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+				assertThat(status.isNewTransaction()).isTrue();
 
-				Connection c = DataSourceUtils.getConnection(dataSource);
-				assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dataSource));
-				DataSourceUtils.releaseConnection(c, dataSource);
+				Connection con = DataSourceUtils.getConnection(dataSource);
+				assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isTrue();
+				DataSourceUtils.releaseConnection(con, dataSource);
 
-				c = DataSourceUtils.getConnection(dataSource);
-				assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dataSource));
-				DataSourceUtils.releaseConnection(c, dataSource);
+				con = DataSourceUtils.getConnection(dataSource);
+				assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isTrue();
+				DataSourceUtils.releaseConnection(con, dataSource);
 
 				if (rollback) {
 					status.setRollbackOnly();
@@ -127,8 +136,8 @@ public class DataSourceJtaTransactionTests {
 			}
 		});
 
-		assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dataSource));
-		assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isFalse();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 		verify(userTransaction).begin();
 		if (rollback) {
 			verify(userTransaction).rollback();
@@ -137,55 +146,56 @@ public class DataSourceJtaTransactionTests {
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNew() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNew() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(false, false, false, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithAccessAfterResume() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithAccessAfterResume() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(false, false, true, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnection() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnection() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(false, true, false, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAccessed() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAccessed() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(false, true, true, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithTransactionAwareDataSource() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithTransactionAwareDataSource() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(false, false, true, true);
 	}
 
 	@Test
-	public void testJtaTransactionRollbackWithPropagationRequiresNew() throws Exception {
+	void jtaTransactionRollbackWithPropagationRequiresNew() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(true, false, false, false);
 	}
 
 	@Test
-	public void testJtaTransactionRollbackWithPropagationRequiresNewWithAccessAfterResume() throws Exception {
+	void jtaTransactionRollbackWithPropagationRequiresNewWithAccessAfterResume() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(true, false, true, false);
 	}
 
 	@Test
-	public void testJtaTransactionRollbackWithPropagationRequiresNewWithOpenOuterConnection() throws Exception {
+	void jtaTransactionRollbackWithPropagationRequiresNewWithOpenOuterConnection() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(true, true, false, false);
 	}
 
 	@Test
-	public void testJtaTransactionRollbackWithPropagationRequiresNewWithOpenOuterConnectionAccessed() throws Exception {
+	void jtaTransactionRollbackWithPropagationRequiresNewWithOpenOuterConnectionAccessed() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(true, true, true, false);
 	}
 
 	@Test
-	public void testJtaTransactionRollbackWithPropagationRequiresNewWithTransactionAwareDataSource() throws Exception {
+	void jtaTransactionRollbackWithPropagationRequiresNewWithTransactionAwareDataSource() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNew(true, false, true, true);
 	}
 
+	@SuppressWarnings("deprecation")
 	private void doTestJtaTransactionWithPropagationRequiresNew(
 			final boolean rollback, final boolean openOuterConnection, final boolean accessAfterResume,
 			final boolean useTransactionAwareDataSource) throws Exception {
@@ -208,26 +218,26 @@ public class DataSourceJtaTransactionTests {
 		JtaTransactionManager ptm = new JtaTransactionManager(userTransaction, transactionManager);
 		final TransactionTemplate tt = new TransactionTemplate(ptm);
 		tt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-		assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-		assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 
 		tt.execute(new TransactionCallbackWithoutResult() {
 			@Override
 			protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-				assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-				assertTrue("JTA synchronizations active", TransactionSynchronizationManager.isSynchronizationActive());
-				assertTrue("Is new transaction", status.isNewTransaction());
+				assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+				assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+				assertThat(status.isNewTransaction()).isTrue();
 
-				Connection c = DataSourceUtils.getConnection(dsToUse);
+				Connection con = DataSourceUtils.getConnection(dsToUse);
 				try {
-					assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-					c.isReadOnly();
-					DataSourceUtils.releaseConnection(c, dsToUse);
+					assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+					con.isReadOnly();
+					DataSourceUtils.releaseConnection(con, dsToUse);
 
-					c = DataSourceUtils.getConnection(dsToUse);
-					assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
+					con = DataSourceUtils.getConnection(dsToUse);
+					assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
 					if (!openOuterConnection) {
-						DataSourceUtils.releaseConnection(c, dsToUse);
+						DataSourceUtils.releaseConnection(con, dsToUse);
 					}
 				}
 				catch (SQLException ex) {
@@ -238,19 +248,19 @@ public class DataSourceJtaTransactionTests {
 					tt.execute(new TransactionCallbackWithoutResult() {
 						@Override
 						protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-							assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-							assertTrue("JTA synchronizations active", TransactionSynchronizationManager.isSynchronizationActive());
-							assertTrue("Is new transaction", status.isNewTransaction());
+							assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+							assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+							assertThat(status.isNewTransaction()).isTrue();
 
 							try {
-								Connection c = DataSourceUtils.getConnection(dsToUse);
-								c.isReadOnly();
-								assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-								DataSourceUtils.releaseConnection(c, dsToUse);
+								Connection con = DataSourceUtils.getConnection(dsToUse);
+								con.isReadOnly();
+								assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+								DataSourceUtils.releaseConnection(con, dsToUse);
 
-								c = DataSourceUtils.getConnection(dsToUse);
-								assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-								DataSourceUtils.releaseConnection(c, dsToUse);
+								con = DataSourceUtils.getConnection(dsToUse);
+								assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+								DataSourceUtils.releaseConnection(con, dsToUse);
 							}
 							catch (SQLException ex) {
 							}
@@ -266,15 +276,15 @@ public class DataSourceJtaTransactionTests {
 				if (accessAfterResume) {
 					try {
 						if (!openOuterConnection) {
-							c = DataSourceUtils.getConnection(dsToUse);
+							con = DataSourceUtils.getConnection(dsToUse);
 						}
-						assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-						c.isReadOnly();
-						DataSourceUtils.releaseConnection(c, dsToUse);
+						assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+						con.isReadOnly();
+						DataSourceUtils.releaseConnection(con, dsToUse);
 
-						c = DataSourceUtils.getConnection(dsToUse);
-						assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-						DataSourceUtils.releaseConnection(c, dsToUse);
+						con = DataSourceUtils.getConnection(dsToUse);
+						assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+						DataSourceUtils.releaseConnection(con, dsToUse);
 					}
 					catch (SQLException ex) {
 					}
@@ -282,14 +292,14 @@ public class DataSourceJtaTransactionTests {
 
 				else {
 					if (openOuterConnection) {
-						DataSourceUtils.releaseConnection(c, dsToUse);
+						DataSourceUtils.releaseConnection(con, dsToUse);
 					}
 				}
 			}
 		});
 
-		assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-		assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 		verify(userTransaction, times(6)).begin();
 		verify(transactionManager, times(5)).resume(transaction);
 		if (rollback) {
@@ -308,25 +318,26 @@ public class DataSourceJtaTransactionTests {
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiredWithinSupports() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiredWithinSupports() throws Exception {
 		doTestJtaTransactionCommitWithNewTransactionWithinEmptyTransaction(false, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiredWithinNotSupported() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiredWithinNotSupported() throws Exception {
 		doTestJtaTransactionCommitWithNewTransactionWithinEmptyTransaction(false, true);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithinSupports() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithinSupports() throws Exception {
 		doTestJtaTransactionCommitWithNewTransactionWithinEmptyTransaction(true, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithinNotSupported() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithinNotSupported() throws Exception {
 		doTestJtaTransactionCommitWithNewTransactionWithinEmptyTransaction(true, true);
 	}
 
+	@SuppressWarnings("deprecation")
 	private void doTestJtaTransactionCommitWithNewTransactionWithinEmptyTransaction(
 			final boolean requiresNew, boolean notSupported) throws Exception {
 
@@ -346,9 +357,9 @@ public class DataSourceJtaTransactionTests {
 					Status.STATUS_ACTIVE);
 		}
 
-		final DataSource dataSource = mock(DataSource.class);
-		final Connection connection1 = mock(Connection.class);
-		final Connection connection2 = mock(Connection.class);
+		final DataSource dataSource = mock();
+		final Connection connection1 = mock();
+		final Connection connection2 = mock();
 		given(dataSource.getConnection()).willReturn(connection1, connection2);
 
 		final JtaTransactionManager ptm = new JtaTransactionManager(userTransaction, transactionManager);
@@ -356,15 +367,15 @@ public class DataSourceJtaTransactionTests {
 		tt.setPropagationBehavior(notSupported ?
 				TransactionDefinition.PROPAGATION_NOT_SUPPORTED : TransactionDefinition.PROPAGATION_SUPPORTS);
 
-		assertFalse(TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 		tt.execute(new TransactionCallbackWithoutResult() {
 			@Override
 			protected void doInTransactionWithoutResult(TransactionStatus status) {
-				assertTrue(TransactionSynchronizationManager.isSynchronizationActive());
-				assertFalse(TransactionSynchronizationManager.isCurrentTransactionReadOnly());
-				assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
-				assertSame(connection1, DataSourceUtils.getConnection(dataSource));
-				assertSame(connection1, DataSourceUtils.getConnection(dataSource));
+				assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+				assertThat(TransactionSynchronizationManager.isCurrentTransactionReadOnly()).isFalse();
+				assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+				assertThat(DataSourceUtils.getConnection(dataSource)).isSameAs(connection1);
+				assertThat(DataSourceUtils.getConnection(dataSource)).isSameAs(connection1);
 
 				TransactionTemplate tt2 = new TransactionTemplate(ptm);
 				tt2.setPropagationBehavior(requiresNew ?
@@ -372,21 +383,21 @@ public class DataSourceJtaTransactionTests {
 				tt2.execute(new TransactionCallbackWithoutResult() {
 					@Override
 					protected void doInTransactionWithoutResult(TransactionStatus status) {
-						assertTrue(TransactionSynchronizationManager.isSynchronizationActive());
-						assertFalse(TransactionSynchronizationManager.isCurrentTransactionReadOnly());
-						assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
-						assertSame(connection2, DataSourceUtils.getConnection(dataSource));
-						assertSame(connection2, DataSourceUtils.getConnection(dataSource));
+						assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+						assertThat(TransactionSynchronizationManager.isCurrentTransactionReadOnly()).isFalse();
+						assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+						assertThat(DataSourceUtils.getConnection(dataSource)).isSameAs(connection2);
+						assertThat(DataSourceUtils.getConnection(dataSource)).isSameAs(connection2);
 					}
 				});
 
-				assertTrue(TransactionSynchronizationManager.isSynchronizationActive());
-				assertFalse(TransactionSynchronizationManager.isCurrentTransactionReadOnly());
-				assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
-				assertSame(connection1, DataSourceUtils.getConnection(dataSource));
+				assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+				assertThat(TransactionSynchronizationManager.isCurrentTransactionReadOnly()).isFalse();
+				assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+				assertThat(DataSourceUtils.getConnection(dataSource)).isSameAs(connection1);
 			}
 		});
-		assertFalse(TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 		verify(userTransaction).begin();
 		verify(userTransaction).commit();
 		if (notSupported) {
@@ -397,45 +408,46 @@ public class DataSourceJtaTransactionTests {
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewAndSuspendException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewAndSuspendException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(true, false, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndSuspendException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndSuspendException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(true, true, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithTransactionAwareDataSourceAndSuspendException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithTransactionAwareDataSourceAndSuspendException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(true, false, true);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndTransactionAwareDataSourceAndSuspendException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndTransactionAwareDataSourceAndSuspendException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(true, true, true);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewAndBeginException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewAndBeginException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(false, false, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndBeginException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndBeginException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(false, true, false);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndTransactionAwareDataSourceAndBeginException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithOpenOuterConnectionAndTransactionAwareDataSourceAndBeginException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(false, true, true);
 	}
 
 	@Test
-	public void testJtaTransactionCommitWithPropagationRequiresNewWithTransactionAwareDataSourceAndBeginException() throws Exception {
+	void jtaTransactionCommitWithPropagationRequiresNewWithTransactionAwareDataSourceAndBeginException() throws Exception {
 		doTestJtaTransactionWithPropagationRequiresNewAndBeginException(false, false, true);
 	}
 
+	@SuppressWarnings("deprecation")
 	private void doTestJtaTransactionWithPropagationRequiresNewAndBeginException(boolean suspendException,
 			final boolean openOuterConnection, final boolean useTransactionAwareDataSource) throws Exception {
 
@@ -462,27 +474,28 @@ public class DataSourceJtaTransactionTests {
 		JtaTransactionManager ptm = new JtaTransactionManager(userTransaction, transactionManager);
 		final TransactionTemplate tt = new TransactionTemplate(ptm);
 		tt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-		assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-		assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 
-		try {
+		assertThatExceptionOfType(TransactionException.class).isThrownBy(() ->
 			tt.execute(new TransactionCallbackWithoutResult() {
+
 				@Override
 				protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-					assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-					assertTrue("JTA synchronizations active", TransactionSynchronizationManager.isSynchronizationActive());
-					assertTrue("Is new transaction", status.isNewTransaction());
+					assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+					assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+					assertThat(status.isNewTransaction()).isTrue();
 
-					Connection c = DataSourceUtils.getConnection(dsToUse);
+					Connection con = DataSourceUtils.getConnection(dsToUse);
 					try {
-						assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-						c.isReadOnly();
-						DataSourceUtils.releaseConnection(c, dsToUse);
+						assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+						con.isReadOnly();
+						DataSourceUtils.releaseConnection(con, dsToUse);
 
-						c = DataSourceUtils.getConnection(dsToUse);
-						assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
+						con = DataSourceUtils.getConnection(dsToUse);
+						assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
 						if (!openOuterConnection) {
-							DataSourceUtils.releaseConnection(c, dsToUse);
+							DataSourceUtils.releaseConnection(con, dsToUse);
 						}
 					}
 					catch (SQLException ex) {
@@ -492,41 +505,35 @@ public class DataSourceJtaTransactionTests {
 						tt.execute(new TransactionCallbackWithoutResult() {
 							@Override
 							protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-								assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-								assertTrue("JTA synchronizations active", TransactionSynchronizationManager.isSynchronizationActive());
-								assertTrue("Is new transaction", status.isNewTransaction());
+								assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+								assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+								assertThat(status.isNewTransaction()).isTrue();
 
-								Connection c = DataSourceUtils.getConnection(dsToUse);
-								assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-								DataSourceUtils.releaseConnection(c, dsToUse);
+								Connection con = DataSourceUtils.getConnection(dsToUse);
+								assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+								DataSourceUtils.releaseConnection(con, dsToUse);
 
-								c = DataSourceUtils.getConnection(dsToUse);
-								assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-								DataSourceUtils.releaseConnection(c, dsToUse);
+								con = DataSourceUtils.getConnection(dsToUse);
+								assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+								DataSourceUtils.releaseConnection(con, dsToUse);
 							}
 						});
 					}
 					finally {
 						if (openOuterConnection) {
 							try {
-								c.isReadOnly();
-								DataSourceUtils.releaseConnection(c, dsToUse);
+								con.isReadOnly();
+								DataSourceUtils.releaseConnection(con, dsToUse);
 							}
 							catch (SQLException ex) {
 							}
 						}
 					}
 				}
-			});
+			}));
 
-			fail("Should have thrown TransactionException");
-		}
-		catch (TransactionException ex) {
-			// expected
-		}
-
-		assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dsToUse));
-		assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isFalse();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 
 		verify(userTransaction).begin();
 		if (suspendException) {
@@ -541,22 +548,18 @@ public class DataSourceJtaTransactionTests {
 		}
 	}
 
+	@SuppressWarnings("deprecation")
 	@Test
-	public void testJtaTransactionWithConnectionHolderStillBound() throws Exception {
+	void jtaTransactionWithConnectionHolderStillBound() throws Exception {
 		@SuppressWarnings("serial")
 		JtaTransactionManager ptm = new JtaTransactionManager(userTransaction) {
 
 			@Override
 			protected void doRegisterAfterCompletionWithJtaTransaction(
 					JtaTransactionObject txObject,
-					final List<TransactionSynchronization> synchronizations)
-					throws RollbackException, SystemException {
-				Thread async = new Thread() {
-					@Override
-					public void run() {
-						invokeAfterCompletion(synchronizations, TransactionSynchronization.STATUS_COMMITTED);
-					}
-				};
+					final List<TransactionSynchronization> synchronizations) {
+				Thread async = new Thread(() -> invokeAfterCompletion(
+						synchronizations, TransactionSynchronization.STATUS_COMMITTED));
 				async.start();
 				try {
 					async.join();
@@ -567,8 +570,8 @@ public class DataSourceJtaTransactionTests {
 			}
 		};
 		TransactionTemplate tt = new TransactionTemplate(ptm);
-		assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dataSource));
-		assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+		assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isFalse();
+		assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 
 		given(userTransaction.getStatus()).willReturn(Status.STATUS_ACTIVE);
 		for (int i = 0; i < 3; i++) {
@@ -577,34 +580,35 @@ public class DataSourceJtaTransactionTests {
 			tt.execute(new TransactionCallbackWithoutResult() {
 				@Override
 				protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-					assertTrue("JTA synchronizations active", TransactionSynchronizationManager.isSynchronizationActive());
-					assertTrue("Is existing transaction", !status.isNewTransaction());
+					assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+					assertThat(status.isNewTransaction()).isFalse();
 
-					Connection c = DataSourceUtils.getConnection(dataSource);
-					assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dataSource));
-					DataSourceUtils.releaseConnection(c, dataSource);
+					Connection con = DataSourceUtils.getConnection(dataSource);
+					assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isTrue();
+					DataSourceUtils.releaseConnection(con, dataSource);
 
-					c = DataSourceUtils.getConnection(dataSource);
-					assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dataSource));
+					con = DataSourceUtils.getConnection(dataSource);
+					assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isTrue();
 					if (releaseCon) {
-						DataSourceUtils.releaseConnection(c, dataSource);
+						DataSourceUtils.releaseConnection(con, dataSource);
 					}
 				}
 			});
 
 			if (!releaseCon) {
-				assertTrue("Still has connection holder", TransactionSynchronizationManager.hasResource(dataSource));
+				assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isTrue();
 			}
 			else {
-				assertTrue("Hasn't thread connection", !TransactionSynchronizationManager.hasResource(dataSource));
+				assertThat(TransactionSynchronizationManager.hasResource(dataSource)).isFalse();
 			}
-			assertTrue("JTA synchronizations not active", !TransactionSynchronizationManager.isSynchronizationActive());
+			assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
 		}
 		verify(connection, times(3)).close();
 	}
 
+	@SuppressWarnings("deprecation")
 	@Test
-	public void testJtaTransactionWithIsolationLevelDataSourceAdapter() throws Exception {
+	void jtaTransactionWithIsolationLevelDataSourceAdapter() throws Exception {
 		given(userTransaction.getStatus()).willReturn(
 				Status.STATUS_NO_TRANSACTION,
 				Status.STATUS_ACTIVE,
@@ -624,10 +628,10 @@ public class DataSourceJtaTransactionTests {
 		tt.execute(new TransactionCallbackWithoutResult() {
 			@Override
 			protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-				Connection c = DataSourceUtils.getConnection(dsToUse);
-				assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-				assertSame(connection, c);
-				DataSourceUtils.releaseConnection(c, dsToUse);
+				Connection con = DataSourceUtils.getConnection(dsToUse);
+				assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+				assertThat(con).isSameAs(connection);
+				DataSourceUtils.releaseConnection(con, dsToUse);
 			}
 		});
 
@@ -636,10 +640,10 @@ public class DataSourceJtaTransactionTests {
 		tt.execute(new TransactionCallbackWithoutResult() {
 			@Override
 			protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-				Connection c = DataSourceUtils.getConnection(dsToUse);
-				assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-				assertSame(connection, c);
-				DataSourceUtils.releaseConnection(c, dsToUse);
+				Connection con = DataSourceUtils.getConnection(dsToUse);
+				assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+				assertThat(con).isSameAs(connection);
+				DataSourceUtils.releaseConnection(con, dsToUse);
 			}
 		});
 
@@ -651,28 +655,30 @@ public class DataSourceJtaTransactionTests {
 	}
 
 	@Test
-	public void testJtaTransactionWithIsolationLevelDataSourceRouter() throws Exception {
+	void jtaTransactionWithIsolationLevelDataSourceRouter() throws Exception {
 		doTestJtaTransactionWithIsolationLevelDataSourceRouter(false);
 	}
 
 	@Test
-	public void testJtaTransactionWithIsolationLevelDataSourceRouterWithDataSourceLookup() throws Exception {
+	void jtaTransactionWithIsolationLevelDataSourceRouterWithDataSourceLookup() throws Exception {
 		doTestJtaTransactionWithIsolationLevelDataSourceRouter(true);
 	}
 
+	@SuppressWarnings("deprecation")
 	private void doTestJtaTransactionWithIsolationLevelDataSourceRouter(boolean dataSourceLookup) throws Exception {
-given(		userTransaction.getStatus()).willReturn(Status.STATUS_NO_TRANSACTION, Status.STATUS_ACTIVE, Status.STATUS_ACTIVE, Status.STATUS_NO_TRANSACTION, Status.STATUS_ACTIVE, Status.STATUS_ACTIVE);
+		given(userTransaction.getStatus())
+			.willReturn(Status.STATUS_NO_TRANSACTION, Status.STATUS_ACTIVE, Status.STATUS_ACTIVE, Status.STATUS_NO_TRANSACTION, Status.STATUS_ACTIVE, Status.STATUS_ACTIVE);
 
-		final DataSource dataSource1 = mock(DataSource.class);
-		final Connection connection1 = mock(Connection.class);
+		final DataSource dataSource1 = mock();
+		final Connection connection1 = mock();
 		given(dataSource1.getConnection()).willReturn(connection1);
 
-		final DataSource dataSource2 = mock(DataSource.class);
-		final Connection connection2 = mock(Connection.class);
+		final DataSource dataSource2 = mock();
+		final Connection connection2 = mock();
 		given(dataSource2.getConnection()).willReturn(connection2);
 
 		final IsolationLevelDataSourceRouter dsToUse = new IsolationLevelDataSourceRouter();
-		Map<Object, Object> targetDataSources = new HashMap<Object, Object>();
+		Map<Object, Object> targetDataSources = new HashMap<>();
 		if (dataSourceLookup) {
 			targetDataSources.put("ISOLATION_REPEATABLE_READ", "ds2");
 			dsToUse.setDefaultTargetDataSource("ds1");
@@ -695,10 +701,10 @@ given(		userTransaction.getStatus()).willReturn(Status.STATUS_NO_TRANSACTION, St
 		tt.execute(new TransactionCallbackWithoutResult() {
 			@Override
 			protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-				Connection c = DataSourceUtils.getConnection(dsToUse);
-				assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-				assertSame(connection1, c);
-				DataSourceUtils.releaseConnection(c, dsToUse);
+				Connection con = DataSourceUtils.getConnection(dsToUse);
+				assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+				assertThat(con).isSameAs(connection1);
+				DataSourceUtils.releaseConnection(con, dsToUse);
 			}
 		});
 
@@ -706,10 +712,10 @@ given(		userTransaction.getStatus()).willReturn(Status.STATUS_NO_TRANSACTION, St
 		tt.execute(new TransactionCallbackWithoutResult() {
 			@Override
 			protected void doInTransactionWithoutResult(TransactionStatus status) throws RuntimeException {
-				Connection c = DataSourceUtils.getConnection(dsToUse);
-				assertTrue("Has thread connection", TransactionSynchronizationManager.hasResource(dsToUse));
-				assertSame(connection2, c);
-				DataSourceUtils.releaseConnection(c, dsToUse);
+				Connection con = DataSourceUtils.getConnection(dsToUse);
+				assertThat(TransactionSynchronizationManager.hasResource(dsToUse)).isTrue();
+				assertThat(con).isSameAs(connection2);
+				DataSourceUtils.releaseConnection(con, dsToUse);
 			}
 		});
 
@@ -718,4 +724,5 @@ given(		userTransaction.getStatus()).willReturn(Status.STATUS_NO_TRANSACTION, St
 		verify(connection1).close();
 		verify(connection2).close();
 	}
+
 }

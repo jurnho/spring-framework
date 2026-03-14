@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,12 +20,12 @@ import java.lang.annotation.Annotation;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.FatalBeanException;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanDefinitionHolder;
 import org.springframework.beans.factory.parsing.BeanComponentDefinition;
@@ -40,6 +40,9 @@ import org.springframework.core.type.filter.AspectJTypeFilter;
 import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.core.type.filter.RegexPatternTypeFilter;
 import org.springframework.core.type.filter.TypeFilter;
+import org.springframework.util.Assert;
+import org.springframework.util.ClassUtils;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -76,7 +79,7 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 
 
 	@Override
-	public BeanDefinition parse(Element element, ParserContext parserContext) {
+	public @Nullable BeanDefinition parse(Element element, ParserContext parserContext) {
 		String basePackage = element.getAttribute(BASE_PACKAGE_ATTRIBUTE);
 		basePackage = parserContext.getReaderContext().getEnvironment().resolvePlaceholders(basePackage);
 		String[] basePackages = StringUtils.tokenizeToStringArray(basePackage,
@@ -93,13 +96,11 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 	protected ClassPathBeanDefinitionScanner configureScanner(ParserContext parserContext, Element element) {
 		boolean useDefaultFilters = true;
 		if (element.hasAttribute(USE_DEFAULT_FILTERS_ATTRIBUTE)) {
-			useDefaultFilters = Boolean.valueOf(element.getAttribute(USE_DEFAULT_FILTERS_ATTRIBUTE));
+			useDefaultFilters = Boolean.parseBoolean(element.getAttribute(USE_DEFAULT_FILTERS_ATTRIBUTE));
 		}
 
 		// Delegate bean definition registration to scanner class.
 		ClassPathBeanDefinitionScanner scanner = createScanner(parserContext.getReaderContext(), useDefaultFilters);
-		scanner.setResourceLoader(parserContext.getReaderContext().getResourceLoader());
-		scanner.setEnvironment(parserContext.getReaderContext().getEnvironment());
 		scanner.setBeanDefinitionDefaults(parserContext.getDelegate().getBeanDefinitionDefaults());
 		scanner.setAutowireCandidatePatterns(parserContext.getDelegate().getAutowireCandidatePatterns());
 
@@ -111,14 +112,18 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 			parseBeanNameGenerator(element, scanner);
 		}
 		catch (Exception ex) {
-			parserContext.getReaderContext().error(ex.getMessage(), parserContext.extractSource(element), ex.getCause());
+			String message = ex.getMessage();
+			Assert.state(message != null, "Exception message must not be null");
+			parserContext.getReaderContext().error(message, parserContext.extractSource(element), ex.getCause());
 		}
 
 		try {
 			parseScope(element, scanner);
 		}
 		catch (Exception ex) {
-			parserContext.getReaderContext().error(ex.getMessage(), parserContext.extractSource(element), ex.getCause());
+			String message = ex.getMessage();
+			Assert.state(message != null, "Exception message must not be null");
+			parserContext.getReaderContext().error(message, parserContext.extractSource(element), ex.getCause());
 		}
 
 		parseTypeFilters(element, scanner, parserContext);
@@ -127,7 +132,8 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 	}
 
 	protected ClassPathBeanDefinitionScanner createScanner(XmlReaderContext readerContext, boolean useDefaultFilters) {
-		return new ClassPathBeanDefinitionScanner(readerContext.getRegistry(), useDefaultFilters);
+		return new ClassPathBeanDefinitionScanner(readerContext.getRegistry(), useDefaultFilters,
+				readerContext.getEnvironment(), readerContext.getResourceLoader());
 	}
 
 	protected void registerComponents(
@@ -143,7 +149,7 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 		// Register annotation config processors, if necessary.
 		boolean annotationConfig = true;
 		if (element.hasAttribute(ANNOTATION_CONFIG_ATTRIBUTE)) {
-			annotationConfig = Boolean.valueOf(element.getAttribute(ANNOTATION_CONFIG_ATTRIBUTE));
+			annotationConfig = Boolean.parseBoolean(element.getAttribute(ANNOTATION_CONFIG_ATTRIBUTE));
 		}
 		if (annotationConfig) {
 			Set<BeanDefinitionHolder> processorDefinitions =
@@ -180,17 +186,11 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 
 		if (element.hasAttribute(SCOPED_PROXY_ATTRIBUTE)) {
 			String mode = element.getAttribute(SCOPED_PROXY_ATTRIBUTE);
-			if ("targetClass".equals(mode)) {
-				scanner.setScopedProxyMode(ScopedProxyMode.TARGET_CLASS);
-			}
-			else if ("interfaces".equals(mode)) {
-				scanner.setScopedProxyMode(ScopedProxyMode.INTERFACES);
-			}
-			else if ("no".equals(mode)) {
-				scanner.setScopedProxyMode(ScopedProxyMode.NO);
-			}
-			else {
-				throw new IllegalArgumentException("scoped-proxy only supports 'no', 'interfaces' and 'targetClass'");
+			switch (mode) {
+				case "targetClass" -> scanner.setScopedProxyMode(ScopedProxyMode.TARGET_CLASS);
+				case "interfaces" -> scanner.setScopedProxyMode(ScopedProxyMode.INTERFACES);
+				case "no" -> scanner.setScopedProxyMode(ScopedProxyMode.NO);
+				default -> throw new IllegalArgumentException("scoped-proxy only supports 'no', 'interfaces' and 'targetClass'");
 			}
 		}
 	}
@@ -213,60 +213,65 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 						scanner.addExcludeFilter(typeFilter);
 					}
 				}
+				catch (ClassNotFoundException ex) {
+					parserContext.getReaderContext().warning(
+							"Ignoring non-present type filter class: " + ex, parserContext.extractSource(element));
+				}
 				catch (Exception ex) {
+					String message = ex.getMessage();
+					Assert.state(message != null, "Exception message must not be null");
 					parserContext.getReaderContext().error(
-							ex.getMessage(), parserContext.extractSource(element), ex.getCause());
+							message, parserContext.extractSource(element), ex.getCause());
 				}
 			}
 		}
 	}
 
 	@SuppressWarnings("unchecked")
-	protected TypeFilter createTypeFilter(Element element, ClassLoader classLoader, ParserContext parserContext) {
+	protected TypeFilter createTypeFilter(Element element, @Nullable ClassLoader classLoader,
+			ParserContext parserContext) throws ClassNotFoundException {
+
 		String filterType = element.getAttribute(FILTER_TYPE_ATTRIBUTE);
 		String expression = element.getAttribute(FILTER_EXPRESSION_ATTRIBUTE);
 		expression = parserContext.getReaderContext().getEnvironment().resolvePlaceholders(expression);
-		try {
-			if ("annotation".equals(filterType)) {
-				return new AnnotationTypeFilter((Class<Annotation>) classLoader.loadClass(expression));
+		switch (filterType) {
+			case "annotation" -> {
+				return new AnnotationTypeFilter((Class<Annotation>) ClassUtils.forName(expression, classLoader));
 			}
-			else if ("assignable".equals(filterType)) {
-				return new AssignableTypeFilter(classLoader.loadClass(expression));
+			case "assignable" -> {
+				return new AssignableTypeFilter(ClassUtils.forName(expression, classLoader));
 			}
-			else if ("aspectj".equals(filterType)) {
+			case "aspectj" -> {
 				return new AspectJTypeFilter(expression, classLoader);
 			}
-			else if ("regex".equals(filterType)) {
+			case "regex" -> {
 				return new RegexPatternTypeFilter(Pattern.compile(expression));
 			}
-			else if ("custom".equals(filterType)) {
-				Class<?> filterClass = classLoader.loadClass(expression);
+			case "custom" -> {
+				Class<?> filterClass = ClassUtils.forName(expression, classLoader);
 				if (!TypeFilter.class.isAssignableFrom(filterClass)) {
 					throw new IllegalArgumentException(
 							"Class is not assignable to [" + TypeFilter.class.getName() + "]: " + expression);
 				}
 				return (TypeFilter) BeanUtils.instantiateClass(filterClass);
 			}
-			else {
-				throw new IllegalArgumentException("Unsupported filter type: " + filterType);
-			}
-		}
-		catch (ClassNotFoundException ex) {
-			throw new FatalBeanException("Type filter class not found: " + expression, ex);
+			default -> throw new IllegalArgumentException("Unsupported filter type: " + filterType);
 		}
 	}
 
 	@SuppressWarnings("unchecked")
-	private Object instantiateUserDefinedStrategy(String className, Class<?> strategyType, ClassLoader classLoader) {
+	private Object instantiateUserDefinedStrategy(
+			String className, Class<?> strategyType, @Nullable ClassLoader classLoader) {
+
 		Object result;
 		try {
-			result = classLoader.loadClass(className).newInstance();
+			result = ReflectionUtils.accessibleConstructor(ClassUtils.forName(className, classLoader)).newInstance();
 		}
 		catch (ClassNotFoundException ex) {
 			throw new IllegalArgumentException("Class [" + className + "] for strategy [" +
 					strategyType.getName() + "] not found", ex);
 		}
-		catch (Exception ex) {
+		catch (Throwable ex) {
 			throw new IllegalArgumentException("Unable to instantiate class [" + className + "] for strategy [" +
 					strategyType.getName() + "]: a zero-argument constructor is required", ex);
 		}

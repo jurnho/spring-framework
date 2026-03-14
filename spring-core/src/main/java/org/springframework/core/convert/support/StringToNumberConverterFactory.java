@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.core.convert.support;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.core.convert.converter.ConverterFactory;
@@ -41,12 +43,12 @@ import org.springframework.util.NumberUtils;
 final class StringToNumberConverterFactory implements ConverterFactory<String, Number> {
 
 	@Override
-	public <T extends Number> Converter<String, T> getConverter(Class<T> targetType) {
-		return new StringToNumber<T>(targetType);
+	public <T extends Number> Converter<String, @Nullable T> getConverter(Class<T> targetType) {
+		return new StringToNumber<>(targetType);
 	}
 
 
-	private static final class StringToNumber<T extends Number> implements Converter<String, T> {
+	private static final class StringToNumber<T extends Number> implements Converter<String, @Nullable T> {
 
 		private final Class<T> targetType;
 
@@ -55,8 +57,8 @@ final class StringToNumberConverterFactory implements ConverterFactory<String, N
 		}
 
 		@Override
-		public T convert(String source) {
-			if (source.length() == 0) {
+		public @Nullable T convert(String source) {
+			if (source.isEmpty()) {
 				return null;
 			}
 			return NumberUtils.parseNumber(source, this.targetType);

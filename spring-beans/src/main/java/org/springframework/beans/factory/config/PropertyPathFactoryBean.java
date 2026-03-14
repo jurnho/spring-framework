@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@ package org.springframework.beans.factory.config;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeanWrapper;
 import org.springframework.beans.BeansException;
@@ -27,6 +28,7 @@ import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanFactoryUtils;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.FactoryBean;
+import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
@@ -85,17 +87,19 @@ public class PropertyPathFactoryBean implements FactoryBean<Object>, BeanNameAwa
 
 	private static final Log logger = LogFactory.getLog(PropertyPathFactoryBean.class);
 
-	private BeanWrapper targetBeanWrapper;
+	private @Nullable BeanWrapper targetBeanWrapper;
 
+	@SuppressWarnings("NullAway.Init")
 	private String targetBeanName;
 
-	private String propertyPath;
+	private @Nullable String propertyPath;
 
-	private Class<?> resultType;
+	private @Nullable Class<?> resultType;
 
+	@SuppressWarnings("NullAway.Init")
 	private String beanName;
 
-	private BeanFactory beanFactory;
+	private @Nullable BeanFactory beanFactory;
 
 
 	/**
@@ -113,7 +117,7 @@ public class PropertyPathFactoryBean implements FactoryBean<Object>, BeanNameAwa
 	 * Specify the name of a target bean to apply the property path to.
 	 * Alternatively, specify a target object directly.
 	 * @param targetBeanName the bean name to be looked up in the
-	 * containing bean factory (e.g. "testBean")
+	 * containing bean factory (for example, "testBean")
 	 * @see #setTargetObject
 	 */
 	public void setTargetBeanName(String targetBeanName) {
@@ -123,7 +127,7 @@ public class PropertyPathFactoryBean implements FactoryBean<Object>, BeanNameAwa
 	/**
 	 * Specify the property path to apply to the target.
 	 * @param propertyPath the property path, potentially nested
-	 * (e.g. "age" or "spouse.age")
+	 * (for example, "age" or "spouse.age")
 	 */
 	public void setPropertyPath(String propertyPath) {
 		this.propertyPath = StringUtils.trimAllWhitespace(propertyPath);
@@ -168,7 +172,7 @@ public class PropertyPathFactoryBean implements FactoryBean<Object>, BeanNameAwa
 			}
 
 			// No other properties specified: check bean name.
-			int dotIndex = this.beanName.indexOf('.');
+			int dotIndex = (this.beanName != null ? this.beanName.indexOf('.') : -1);
 			if (dotIndex == -1) {
 				throw new IllegalArgumentException(
 						"Neither 'targetObject' nor 'targetBeanName' specified, and PropertyPathFactoryBean " +
@@ -193,26 +197,29 @@ public class PropertyPathFactoryBean implements FactoryBean<Object>, BeanNameAwa
 
 
 	@Override
-	public Object getObject() throws BeansException {
+	public @Nullable Object getObject() throws BeansException {
 		BeanWrapper target = this.targetBeanWrapper;
 		if (target != null) {
 			if (logger.isWarnEnabled() && this.targetBeanName != null &&
-					this.beanFactory instanceof ConfigurableBeanFactory &&
-					((ConfigurableBeanFactory) this.beanFactory).isCurrentlyInCreation(this.targetBeanName)) {
+					this.beanFactory instanceof ConfigurableBeanFactory cbf &&
+					cbf.isCurrentlyInCreation(this.targetBeanName)) {
 				logger.warn("Target bean '" + this.targetBeanName + "' is still in creation due to a circular " +
 						"reference - obtained value for property '" + this.propertyPath + "' may be outdated!");
 			}
 		}
 		else {
 			// Fetch prototype target bean...
+			Assert.state(this.beanFactory != null, "No BeanFactory available");
+			Assert.state(this.targetBeanName != null, "No target bean name specified");
 			Object bean = this.beanFactory.getBean(this.targetBeanName);
 			target = PropertyAccessorFactory.forBeanPropertyAccess(bean);
 		}
+		Assert.state(this.propertyPath != null, "No property path specified");
 		return target.getPropertyValue(this.propertyPath);
 	}
 
 	@Override
-	public Class<?> getObjectType() {
+	public @Nullable Class<?> getObjectType() {
 		return this.resultType;
 	}
 

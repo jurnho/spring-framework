@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,8 @@
 
 package org.springframework.web.context.support;
 
-import javax.servlet.ServletContext;
+import jakarta.servlet.ServletContext;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.web.context.ServletContextAware;
@@ -27,8 +28,8 @@ import org.springframework.web.context.ServletContextAware;
  * Exposes that ServletContext init parameter when used as bean reference,
  * effectively making it available as named Spring bean instance.
  *
- * <p><b>NOTE:</b> As of Spring 3.0, you may also use the "contextParameters" default
- * bean which is of type Map, and dereference it using an "#{contextParameters.myKey}"
+ * <p><b>NOTE:</b> You may also use the "contextParameters" default bean, which
+ * is of type Map, and dereference it using a "#{contextParameters.myKey}"
  * expression to access a specific parameter by name.
  *
  * @author Juergen Hoeller
@@ -38,9 +39,9 @@ import org.springframework.web.context.ServletContextAware;
  */
 public class ServletContextParameterFactoryBean implements FactoryBean<String>, ServletContextAware {
 
-	private String initParamName;
+	private @Nullable String initParamName;
 
-	private String paramValue;
+	private @Nullable String paramValue;
 
 
 	/**
@@ -63,7 +64,7 @@ public class ServletContextParameterFactoryBean implements FactoryBean<String>, 
 
 
 	@Override
-	public String getObject() {
+	public @Nullable String getObject() {
 		return this.paramValue;
 	}
 

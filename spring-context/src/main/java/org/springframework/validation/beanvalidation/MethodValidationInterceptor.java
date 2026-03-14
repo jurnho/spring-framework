@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,79 +17,81 @@
 package org.springframework.validation.beanvalidation;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
-import javax.validation.ConstraintViolation;
-import javax.validation.ConstraintViolationException;
-import javax.validation.Validation;
-import javax.validation.Validator;
-import javax.validation.ValidatorFactory;
+import java.util.function.Supplier;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Valid;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
-import org.hibernate.validator.HibernateValidator;
+import org.jspecify.annotations.Nullable;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import org.springframework.core.BridgeMethodResolver;
+import org.springframework.aop.ProxyMethodInvocation;
+import org.springframework.beans.factory.FactoryBean;
+import org.springframework.beans.factory.SmartFactoryBean;
+import org.springframework.core.MethodParameter;
+import org.springframework.core.ReactiveAdapter;
+import org.springframework.core.ReactiveAdapterRegistry;
 import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
-import org.springframework.util.ReflectionUtils;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.Errors;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.validation.annotation.ValidationAnnotationUtils;
+import org.springframework.validation.method.MethodValidationException;
+import org.springframework.validation.method.MethodValidationResult;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
 
 /**
  * An AOP Alliance {@link MethodInterceptor} implementation that delegates to a
  * JSR-303 provider for performing method-level validation on annotated methods.
  *
- * <p>Applicable methods have JSR-303 constraint annotations on their parameters
- * and/or on their return value (in the latter case specified at the method level,
- * typically as inline annotation).
+ * <p>Applicable methods have {@link jakarta.validation.Constraint} annotations on
+ * their parameters and/or on their return value (in the latter case specified at
+ * the method level, typically as inline annotation).
  *
- * <p>E.g.: {@code public @NotNull Object myValidMethod(@NotNull String arg1, @Max(10) int arg2)}
+ * <p>For example: {@code public @NotNull Object myValidMethod(@NotNull String arg1, @Max(10) int arg2)}
+ *
+ * <p>In case of validation errors, the interceptor can raise
+ * {@link ConstraintViolationException}, or adapt the violations to
+ * {@link MethodValidationResult} and raise {@link MethodValidationException}.
  *
  * <p>Validation groups can be specified through Spring's {@link Validated} annotation
  * at the type level of the containing target class, applying to all public service methods
  * of that class. By default, JSR-303 will validate against its default group only.
  *
- * <p>As of Spring 4.0, this functionality requires either a Bean Validation 1.1 provider
- * (such as Hibernate Validator 5.x) or the Bean Validation 1.0 API with Hibernate Validator
- * 4.3. The actual provider will be autodetected and automatically adapted.
- *
  * @author Juergen Hoeller
+ * @author Rossen Stoyanchev
  * @since 3.1
  * @see MethodValidationPostProcessor
- * @see javax.validation.executable.ExecutableValidator
- * @see org.hibernate.validator.method.MethodValidator
+ * @see jakarta.validation.executable.ExecutableValidator
  */
 public class MethodValidationInterceptor implements MethodInterceptor {
 
-	private static Method forExecutablesMethod;
-
-	private static Method validateParametersMethod;
-
-	private static Method validateReturnValueMethod;
-
-	static {
-		try {
-			forExecutablesMethod = Validator.class.getMethod("forExecutables");
-			Class<?> executableValidatorClass = forExecutablesMethod.getReturnType();
-			validateParametersMethod = executableValidatorClass.getMethod(
-					"validateParameters", Object.class, Method.class, Object[].class, Class[].class);
-			validateReturnValueMethod = executableValidatorClass.getMethod(
-					"validateReturnValue", Object.class, Method.class, Object.class, Class[].class);
-		}
-		catch (Exception ex) {
-			// Bean Validation 1.1 ExecutableValidator API not available
-		}
-	}
+	private static final boolean REACTOR_PRESENT = ClassUtils.isPresent(
+			"reactor.core.publisher.Mono", MethodValidationInterceptor.class.getClassLoader());
 
 
-	private final Validator validator;
+	private final MethodValidationAdapter validationAdapter;
+
+	private final boolean adaptViolations;
 
 
 	/**
 	 * Create a new MethodValidationInterceptor using a default JSR-303 validator underneath.
 	 */
 	public MethodValidationInterceptor() {
-		this(forExecutablesMethod != null ? Validation.buildDefaultValidatorFactory() :
-				HibernateValidatorDelegate.buildValidatorFactory());
+		this(new MethodValidationAdapter(), false);
 	}
 
 	/**
@@ -97,7 +99,7 @@ public class MethodValidationInterceptor implements MethodInterceptor {
 	 * @param validatorFactory the JSR-303 ValidatorFactory to use
 	 */
 	public MethodValidationInterceptor(ValidatorFactory validatorFactory) {
-		this(validatorFactory.getValidator());
+		this(new MethodValidationAdapter(validatorFactory), false);
 	}
 
 	/**
@@ -105,98 +107,197 @@ public class MethodValidationInterceptor implements MethodInterceptor {
 	 * @param validator the JSR-303 Validator to use
 	 */
 	public MethodValidationInterceptor(Validator validator) {
-		this.validator = validator;
+		this(new MethodValidationAdapter(validator), false);
+	}
+
+	/**
+	 * Create a new MethodValidationInterceptor for the supplied
+	 * (potentially lazily initialized) Validator.
+	 * @param validator a Supplier for the Validator to use
+	 * @since 6.0
+	 */
+	public MethodValidationInterceptor(Supplier<Validator> validator) {
+		this(validator, false);
+	}
+
+	/**
+	 * Create a new MethodValidationInterceptor for the supplied
+	 * (potentially lazily initialized) Validator.
+	 * @param validator a Supplier for the Validator to use
+	 * @param adaptViolations whether to adapt {@link ConstraintViolation}s, and
+	 * if {@code true}, raise {@link MethodValidationException}, of if
+	 * {@code false} raise {@link ConstraintViolationException} instead
+	 * @since 6.1
+	 */
+	public MethodValidationInterceptor(Supplier<Validator> validator, boolean adaptViolations) {
+		this(new MethodValidationAdapter(validator), adaptViolations);
+	}
+
+	private MethodValidationInterceptor(MethodValidationAdapter validationAdapter, boolean adaptViolations) {
+		this.validationAdapter = validationAdapter;
+		this.adaptViolations = adaptViolations;
 	}
 
 
 	@Override
-	@SuppressWarnings("unchecked")
-	public Object invoke(MethodInvocation invocation) throws Throwable {
+	public @Nullable Object invoke(MethodInvocation invocation) throws Throwable {
+		// Avoid Validator invocation on FactoryBean.getObjectType/isSingleton
+		if (isFactoryBeanMetadataMethod(invocation.getMethod())) {
+			return invocation.proceed();
+		}
+
+		Object target = getTarget(invocation);
+		Method method = invocation.getMethod();
+		@Nullable Object[] arguments = invocation.getArguments();
 		Class<?>[] groups = determineValidationGroups(invocation);
 
-		if (forExecutablesMethod != null) {
-			// Standard Bean Validation 1.1 API
-			Object execVal = ReflectionUtils.invokeMethod(forExecutablesMethod, this.validator);
-			Method methodToValidate = invocation.getMethod();
-			Set<ConstraintViolation<?>> result;
-
-			try {
-				result = (Set<ConstraintViolation<?>>) ReflectionUtils.invokeMethod(validateParametersMethod,
-						execVal, invocation.getThis(), methodToValidate, invocation.getArguments(), groups);
-			}
-			catch (IllegalArgumentException ex) {
-				// Probably a generic type mismatch between interface and impl as reported in SPR-12237 / HV-1011
-				// Let's try to find the bridged method on the implementation class...
-				methodToValidate = BridgeMethodResolver.findBridgedMethod(
-						ClassUtils.getMostSpecificMethod(invocation.getMethod(), invocation.getThis().getClass()));
-				result = (Set<ConstraintViolation<?>>) ReflectionUtils.invokeMethod(validateParametersMethod,
-						execVal, invocation.getThis(), methodToValidate, invocation.getArguments(), groups);
-			}
-			if (!result.isEmpty()) {
-				throw new ConstraintViolationException(result);
-			}
-
-			Object returnValue = invocation.proceed();
-
-			result = (Set<ConstraintViolation<?>>) ReflectionUtils.invokeMethod(validateReturnValueMethod,
-					execVal, invocation.getThis(), methodToValidate, returnValue, groups);
-			if (!result.isEmpty()) {
-				throw new ConstraintViolationException(result);
-			}
-
-			return returnValue;
+		if (REACTOR_PRESENT) {
+			arguments = ReactorValidationHelper.insertAsyncValidation(
+					this.validationAdapter.getSpringValidatorAdapter(), this.adaptViolations,
+					target, method, arguments);
 		}
 
+		Set<ConstraintViolation<Object>> violations;
+
+		if (this.adaptViolations) {
+			this.validationAdapter.applyArgumentValidation(target, method, null, arguments, groups);
+		}
 		else {
-			// Hibernate Validator 4.3's native API
-			return HibernateValidatorDelegate.invokeWithinValidation(invocation, this.validator, groups);
+			violations = this.validationAdapter.invokeValidatorForArguments(target, method, arguments, groups);
+			if (!violations.isEmpty()) {
+				throw new ConstraintViolationException(violations);
+			}
 		}
+
+		Object returnValue = invocation.proceed();
+
+		if (this.adaptViolations) {
+			this.validationAdapter.applyReturnValueValidation(target, method, null, returnValue, groups);
+		}
+		else {
+			violations = this.validationAdapter.invokeValidatorForReturnValue(target, method, returnValue, groups);
+			if (!violations.isEmpty()) {
+				throw new ConstraintViolationException(violations);
+			}
+		}
+
+		return returnValue;
+	}
+
+	private static Object getTarget(MethodInvocation invocation) {
+		Object target = invocation.getThis();
+		if (target == null && invocation instanceof ProxyMethodInvocation methodInvocation) {
+			// Allow validation for AOP proxy without a target
+			target = methodInvocation.getProxy();
+		}
+		Assert.state(target != null, "Target must not be null");
+		return target;
+	}
+
+	private boolean isFactoryBeanMetadataMethod(Method method) {
+		Class<?> clazz = method.getDeclaringClass();
+
+		// Call from interface-based proxy handle, allowing for an efficient check?
+		if (clazz.isInterface()) {
+			return ((clazz == FactoryBean.class || clazz == SmartFactoryBean.class) &&
+					!method.getName().equals("getObject"));
+		}
+
+		// Call from CGLIB proxy handle, potentially implementing a FactoryBean method?
+		Class<?> factoryBeanType = null;
+		if (SmartFactoryBean.class.isAssignableFrom(clazz)) {
+			factoryBeanType = SmartFactoryBean.class;
+		}
+		else if (FactoryBean.class.isAssignableFrom(clazz)) {
+			factoryBeanType = FactoryBean.class;
+		}
+		return (factoryBeanType != null && !method.getName().equals("getObject") &&
+				ClassUtils.hasMethod(factoryBeanType, method));
 	}
 
 	/**
 	 * Determine the validation groups to validate against for the given method invocation.
 	 * <p>Default are the validation groups as specified in the {@link Validated} annotation
-	 * on the containing target class of the method.
+	 * on the method, or on the containing target class of the method, or for an AOP proxy
+	 * without a target (with all behavior in advisors), also check on proxied interfaces.
 	 * @param invocation the current MethodInvocation
 	 * @return the applicable validation groups as a Class array
 	 */
 	protected Class<?>[] determineValidationGroups(MethodInvocation invocation) {
-		Validated validatedAnn = AnnotationUtils.findAnnotation(invocation.getMethod(), Validated.class);
-		if (validatedAnn == null) {
-			validatedAnn = AnnotationUtils.findAnnotation(invocation.getThis().getClass(), Validated.class);
-		}
-		return (validatedAnn != null ? validatedAnn.value() : new Class<?>[0]);
+		Object target = getTarget(invocation);
+		return ValidationAnnotationUtils.determineValidationGroups(target, invocation.getMethod());
 	}
 
 
 	/**
-	 * Inner class to avoid a hard-coded Hibernate Validator 4.3 dependency.
+	 * Helper class to decorate reactive arguments with async validation.
 	 */
-	private static class HibernateValidatorDelegate {
+	private static final class ReactorValidationHelper {
 
-		public static ValidatorFactory buildValidatorFactory() {
-			return Validation.byProvider(HibernateValidator.class).configure().buildValidatorFactory();
+		private static final ReactiveAdapterRegistry reactiveAdapterRegistry =
+				ReactiveAdapterRegistry.getSharedInstance();
+
+
+		static @Nullable Object[] insertAsyncValidation(
+				Supplier<SpringValidatorAdapter> validatorAdapterSupplier, boolean adaptViolations,
+				Object target, Method method, @Nullable Object[] arguments) {
+
+			for (int i = 0; i < method.getParameterCount(); i++) {
+				if (arguments[i] == null) {
+					continue;
+				}
+				Class<?> parameterType = method.getParameterTypes()[i];
+				ReactiveAdapter reactiveAdapter = reactiveAdapterRegistry.getAdapter(parameterType);
+				if (reactiveAdapter == null || reactiveAdapter.isNoValue()) {
+					continue;
+				}
+				Class<?>[] groups = determineValidationGroups(method.getParameters()[i]);
+				if (groups == null) {
+					continue;
+				}
+				SpringValidatorAdapter validatorAdapter = validatorAdapterSupplier.get();
+				MethodParameter param = new MethodParameter(method, i);
+				arguments[i] = (reactiveAdapter.isMultiValue() ?
+						Flux.from(reactiveAdapter.toPublisher(arguments[i])).doOnNext(value ->
+								validate(validatorAdapter, adaptViolations, target, method, param, value, groups)) :
+						Mono.from(reactiveAdapter.toPublisher(arguments[i])).doOnNext(value ->
+								validate(validatorAdapter, adaptViolations, target, method, param, value, groups)));
+			}
+			return arguments;
 		}
 
-		@SuppressWarnings("deprecation")
-		public static Object invokeWithinValidation(MethodInvocation invocation, Validator validator, Class<?>[] groups)
-				throws Throwable {
+		private static Class<?> @Nullable [] determineValidationGroups(Parameter parameter) {
+			Validated validated = AnnotationUtils.findAnnotation(parameter, Validated.class);
+			if (validated != null) {
+				return validated.value();
+			}
+			Valid valid = AnnotationUtils.findAnnotation(parameter, Valid.class);
+			if (valid != null) {
+				return new Class<?>[0];
+			}
+			return null;
+		}
 
-			org.hibernate.validator.method.MethodValidator methodValidator =
-					validator.unwrap(org.hibernate.validator.method.MethodValidator.class);
-			Set<org.hibernate.validator.method.MethodConstraintViolation<Object>> result =
-					methodValidator.validateAllParameters(
-							invocation.getThis(), invocation.getMethod(), invocation.getArguments(), groups);
-			if (!result.isEmpty()) {
-				throw new org.hibernate.validator.method.MethodConstraintViolationException(result);
+		@SuppressWarnings("unchecked")
+		private static <T> void validate(
+				SpringValidatorAdapter validatorAdapter, boolean adaptViolations,
+				Object target, Method method, MethodParameter parameter, Object argument, Class<?>[] groups) {
+
+			if (adaptViolations) {
+				Errors errors = new BeanPropertyBindingResult(argument, argument.getClass().getSimpleName());
+				validatorAdapter.validate(argument, errors);
+				if (errors.hasErrors()) {
+					ParameterErrors paramErrors = new ParameterErrors(parameter, argument, errors, null, null, null);
+					List<ParameterValidationResult> results = Collections.singletonList(paramErrors);
+					throw new MethodValidationException(MethodValidationResult.create(target, method, results));
+				}
 			}
-			Object returnValue = invocation.proceed();
-			result = methodValidator.validateReturnValue(
-					invocation.getThis(), invocation.getMethod(), returnValue, groups);
-			if (!result.isEmpty()) {
-				throw new org.hibernate.validator.method.MethodConstraintViolationException(result);
+			else {
+				Set<ConstraintViolation<T>> violations = validatorAdapter.validate((T) argument, groups);
+				if (!violations.isEmpty()) {
+					throw new ConstraintViolationException(violations);
+				}
 			}
-			return returnValue;
 		}
 	}
 

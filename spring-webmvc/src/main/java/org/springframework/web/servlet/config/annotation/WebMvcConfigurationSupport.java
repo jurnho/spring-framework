@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,76 +16,79 @@
 
 package org.springframework.web.servlet.config.annotation;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletRequest;
-import javax.xml.transform.Source;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.ServletContext;
+import org.jspecify.annotations.Nullable;
 
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.BeanFactoryUtils;
 import org.springframework.beans.factory.BeanInitializationException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.core.KotlinDetector;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.format.Formatter;
 import org.springframework.format.FormatterRegistry;
 import org.springframework.format.support.DefaultFormattingConversionService;
 import org.springframework.format.support.FormattingConversionService;
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.ByteArrayHttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.ResourceHttpMessageConverter;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.converter.feed.AtomFeedHttpMessageConverter;
-import org.springframework.http.converter.feed.RssChannelHttpMessageConverter;
-import org.springframework.http.converter.json.GsonHttpMessageConverter;
-import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.http.converter.support.AllEncompassingFormHttpMessageConverter;
-import org.springframework.http.converter.xml.Jaxb2RootElementHttpMessageConverter;
-import org.springframework.http.converter.xml.MappingJackson2XmlHttpMessageConverter;
-import org.springframework.http.converter.xml.SourceHttpMessageConverter;
+import org.springframework.http.converter.HttpMessageConverters;
 import org.springframework.util.AntPathMatcher;
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.PathMatcher;
 import org.springframework.validation.Errors;
 import org.springframework.validation.MessageCodesResolver;
 import org.springframework.validation.Validator;
+import org.springframework.validation.beanvalidation.OptionalValidatorFactoryBean;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.HttpRequestHandler;
+import org.springframework.web.accept.ApiVersionStrategy;
 import org.springframework.web.accept.ContentNegotiationManager;
 import org.springframework.web.bind.WebDataBinder;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.support.ConfigurableWebBindingInitializer;
 import org.springframework.web.context.ServletContextAware;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.method.support.CompositeUriComponentsContributor;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.HandlerMethodReturnValueHandler;
+import org.springframework.web.servlet.FlashMapManager;
 import org.springframework.web.servlet.HandlerAdapter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
-import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
+import org.springframework.web.servlet.LocaleResolver;
+import org.springframework.web.servlet.RequestToViewNameTranslator;
 import org.springframework.web.servlet.ViewResolver;
+import org.springframework.web.servlet.function.support.HandlerFunctionAdapter;
+import org.springframework.web.servlet.function.support.RouterFunctionMapping;
 import org.springframework.web.servlet.handler.AbstractHandlerMapping;
 import org.springframework.web.servlet.handler.BeanNameUrlHandlerMapping;
 import org.springframework.web.servlet.handler.ConversionServiceExposingInterceptor;
 import org.springframework.web.servlet.handler.HandlerExceptionResolverComposite;
+import org.springframework.web.servlet.handler.HandlerMappingIntrospector;
+import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
 import org.springframework.web.servlet.mvc.Controller;
 import org.springframework.web.servlet.mvc.HttpRequestHandlerAdapter;
 import org.springframework.web.servlet.mvc.SimpleControllerHandlerAdapter;
 import org.springframework.web.servlet.mvc.annotation.ResponseStatusExceptionResolver;
+import org.springframework.web.servlet.mvc.method.annotation.ContextClassRequestBodyAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver;
 import org.springframework.web.servlet.mvc.method.annotation.JsonViewRequestBodyAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.JsonViewResponseBodyAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.KotlinRequestBodyAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.KotlinResponseBodyAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -93,21 +96,26 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 import org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver;
 import org.springframework.web.servlet.resource.ResourceUrlProvider;
 import org.springframework.web.servlet.resource.ResourceUrlProviderExposingInterceptor;
+import org.springframework.web.servlet.support.SessionFlashMapManager;
+import org.springframework.web.servlet.view.DefaultRequestToViewNameTranslator;
 import org.springframework.web.servlet.view.InternalResourceViewResolver;
 import org.springframework.web.servlet.view.ViewResolverComposite;
 import org.springframework.web.util.UrlPathHelper;
+import org.springframework.web.util.pattern.PathPatternParser;
 
 /**
  * This is the main class providing the configuration behind the MVC Java config.
  * It is typically imported by adding {@link EnableWebMvc @EnableWebMvc} to an
  * application {@link Configuration @Configuration} class. An alternative more
  * advanced option is to extend directly from this class and override methods as
- * necessary remembering to add {@link Configuration @Configuration} to the
+ * necessary, remembering to add {@link Configuration @Configuration} to the
  * subclass and {@link Bean @Bean} to overridden {@link Bean @Bean} methods.
- * For more details see the Javadoc of {@link EnableWebMvc @EnableWebMvc}.
+ * For more details see the javadoc of {@link EnableWebMvc @EnableWebMvc}.
  *
- * <p>This class registers the following {@link HandlerMapping}s:</p>
+ * <p>This class registers the following {@link HandlerMapping HandlerMappings}:</p>
  * <ul>
+ * <li>{@link RouterFunctionMapping}
+ * ordered at -1 to map {@linkplain org.springframework.web.servlet.function.RouterFunction router functions}.
  * <li>{@link RequestMappingHandlerMapping}
  * ordered at 0 for mapping requests to annotated controller methods.
  * <li>{@link HandlerMapping}
@@ -120,23 +128,25 @@ import org.springframework.web.util.UrlPathHelper;
  * ordered at {@code Integer.MAX_VALUE} to forward requests to the default servlet.
  * </ul>
  *
- * <p>Registers these {@link HandlerAdapter}s:
+ * <p>Registers these {@link HandlerAdapter HandlerAdapters}:
  * <ul>
  * <li>{@link RequestMappingHandlerAdapter}
  * for processing requests with annotated controller methods.
  * <li>{@link HttpRequestHandlerAdapter}
- * for processing requests with {@link HttpRequestHandler}s.
+ * for processing requests with {@link HttpRequestHandler HttpRequestHandlers}.
  * <li>{@link SimpleControllerHandlerAdapter}
- * for processing requests with interface-based {@link Controller}s.
+ * for processing requests with interface-based {@link Controller Controllers}.
+ * <li>{@link HandlerFunctionAdapter}
+ * for processing requests with {@linkplain org.springframework.web.servlet.function.RouterFunction router functions}.
  * </ul>
  *
  * <p>Registers a {@link HandlerExceptionResolverComposite} with this chain of
  * exception resolvers:
  * <ul>
- * <li>{@link ExceptionHandlerExceptionResolver} for handling exceptions
- * through @{@link ExceptionHandler} methods.
- * <li>{@link ResponseStatusExceptionResolver} for exceptions annotated
- * with @{@link ResponseStatus}.
+ * <li>{@link ExceptionHandlerExceptionResolver} for handling exceptions through
+ * {@link org.springframework.web.bind.annotation.ExceptionHandler} methods.
+ * <li>{@link ResponseStatusExceptionResolver} for exceptions annotated with
+ * {@link org.springframework.web.bind.annotation.ResponseStatus}.
  * <li>{@link DefaultHandlerExceptionResolver} for resolving known Spring
  * exception types
  * </ul>
@@ -156,118 +166,130 @@ import org.springframework.web.util.UrlPathHelper;
  * <ul>
  * <li>a {@link ContentNegotiationManager}
  * <li>a {@link DefaultFormattingConversionService}
- * <li>a {@link org.springframework.validation.beanvalidation.OptionalValidatorFactoryBean}
+ * <li>an {@link org.springframework.validation.beanvalidation.OptionalValidatorFactoryBean}
  * if a JSR-303 implementation is available on the classpath
- * <li>a range of {@link HttpMessageConverter}s depending on the third-party
+ * <li>a range of {@link HttpMessageConverter HttpMessageConverters} depending on the third-party
  * libraries available on the classpath.
  * </ul>
  *
  * @author Rossen Stoyanchev
  * @author Brian Clozel
  * @author Sebastien Deleuze
+ * @author Hyoungjune Kim
  * @since 3.1
  * @see EnableWebMvc
  * @see WebMvcConfigurer
- * @see WebMvcConfigurerAdapter
  */
 public class WebMvcConfigurationSupport implements ApplicationContextAware, ServletContextAware {
 
-	private static boolean romePresent =
-			ClassUtils.isPresent("com.rometools.rome.feed.WireFeed", WebMvcConfigurationSupport.class.getClassLoader());
+	private static final boolean JACKSON_PRESENT;
 
-	private static final boolean jaxb2Present =
-			ClassUtils.isPresent("javax.xml.bind.Binder", WebMvcConfigurationSupport.class.getClassLoader());
+	private static final boolean JACKSON_2_PRESENT;
 
-	private static final boolean jackson2Present =
-			ClassUtils.isPresent("com.fasterxml.jackson.databind.ObjectMapper", WebMvcConfigurationSupport.class.getClassLoader()) &&
-					ClassUtils.isPresent("com.fasterxml.jackson.core.JsonGenerator", WebMvcConfigurationSupport.class.getClassLoader());
+	private static final boolean KOTLIN_REFLECT_PRESENT;
 
-	private static final boolean jackson2XmlPresent =
-			ClassUtils.isPresent("com.fasterxml.jackson.dataformat.xml.XmlMapper", WebMvcConfigurationSupport.class.getClassLoader());
-
-	private static final boolean gsonPresent =
-			ClassUtils.isPresent("com.google.gson.Gson", WebMvcConfigurationSupport.class.getClassLoader());
+	private static final boolean KOTLIN_SERIALIZATION_PRESENT;
 
 
-	private ApplicationContext applicationContext;
+	static {
+		ClassLoader classLoader = WebMvcConfigurationSupport.class.getClassLoader();
+		JACKSON_PRESENT = ClassUtils.isPresent("tools.jackson.databind.ObjectMapper", classLoader);
+		JACKSON_2_PRESENT = ClassUtils.isPresent("com.fasterxml.jackson.databind.ObjectMapper", classLoader) &&
+				ClassUtils.isPresent("com.fasterxml.jackson.core.JsonGenerator", classLoader);
+		KOTLIN_REFLECT_PRESENT = KotlinDetector.isKotlinReflectPresent();
+		KOTLIN_SERIALIZATION_PRESENT = ClassUtils.isPresent("kotlinx.serialization.Serializable", classLoader);
+	}
 
-	private ServletContext servletContext;
 
-	private List<Object> interceptors;
+	private @Nullable ApplicationContext applicationContext;
 
-	private PathMatchConfigurer pathMatchConfigurer;
+	private @Nullable ServletContext servletContext;
 
-	private ContentNegotiationManager contentNegotiationManager;
+	private @Nullable List<Object> interceptors;
 
-	private List<HandlerMethodArgumentResolver> argumentResolvers;
+	private @Nullable PathMatchConfigurer pathMatchConfigurer;
 
-	private List<HandlerMethodReturnValueHandler> returnValueHandlers;
+	private @Nullable ContentNegotiationManager contentNegotiationManager;
 
-	private List<HttpMessageConverter<?>> messageConverters;
+	private @Nullable ApiVersionStrategy apiVersionStrategy;
 
-	private Map<String, CorsConfiguration> corsConfigurations;
+	private @Nullable List<HandlerMethodArgumentResolver> argumentResolvers;
+
+	private @Nullable List<HandlerMethodReturnValueHandler> returnValueHandlers;
+
+	private @Nullable List<HttpMessageConverter<?>> messageConverters;
+
+	private @Nullable List<ErrorResponse.Interceptor> errorResponseInterceptors;
+
+	private @Nullable Map<String, CorsConfiguration> corsConfigurations;
+
+	private @Nullable AsyncSupportConfigurer asyncSupportConfigurer;
 
 
 	/**
-	 * Set the Spring {@link ApplicationContext}, e.g. for resource loading.
+	 * Set the Spring {@link ApplicationContext}, for example, for resource loading.
 	 */
 	@Override
-	public void setApplicationContext(ApplicationContext applicationContext) {
+	public void setApplicationContext(@Nullable ApplicationContext applicationContext) {
 		this.applicationContext = applicationContext;
 	}
 
-	public ApplicationContext getApplicationContext() {
+	/**
+	 * Return the associated Spring {@link ApplicationContext}.
+	 * @since 4.2
+	 */
+	public final @Nullable ApplicationContext getApplicationContext() {
 		return this.applicationContext;
 	}
 
 	/**
-	 * Set the {@link javax.servlet.ServletContext}, e.g. for resource handling,
+	 * Set the {@link jakarta.servlet.ServletContext}, for example, for resource handling,
 	 * looking up file extensions, etc.
 	 */
 	@Override
-	public void setServletContext(ServletContext servletContext) {
+	public void setServletContext(@Nullable ServletContext servletContext) {
 		this.servletContext = servletContext;
 	}
 
-	public ServletContext getServletContext() {
+	/**
+	 * Return the associated {@link jakarta.servlet.ServletContext}.
+	 * @since 4.2
+	 */
+	public final @Nullable ServletContext getServletContext() {
 		return this.servletContext;
 	}
+
 
 	/**
 	 * Return a {@link RequestMappingHandlerMapping} ordered at 0 for mapping
 	 * requests to annotated controllers.
 	 */
 	@Bean
-	public RequestMappingHandlerMapping requestMappingHandlerMapping() {
-		RequestMappingHandlerMapping handlerMapping = createRequestMappingHandlerMapping();
-		handlerMapping.setOrder(0);
-		handlerMapping.setInterceptors(getInterceptors());
-		handlerMapping.setContentNegotiationManager(mvcContentNegotiationManager());
-		handlerMapping.setCorsConfigurations(getCorsConfigurations());
+	public RequestMappingHandlerMapping requestMappingHandlerMapping(
+			@Qualifier("mvcContentNegotiationManager") ContentNegotiationManager contentNegotiationManager,
+			@Qualifier("mvcApiVersionStrategy") @Nullable ApiVersionStrategy apiVersionStrategy,
+			@Qualifier("mvcConversionService") FormattingConversionService conversionService,
+			@Qualifier("mvcResourceUrlProvider") ResourceUrlProvider resourceUrlProvider) {
 
-		PathMatchConfigurer configurer = getPathMatchConfigurer();
-		if (configurer.isUseSuffixPatternMatch() != null) {
-			handlerMapping.setUseSuffixPatternMatch(configurer.isUseSuffixPatternMatch());
-		}
-		if (configurer.isUseRegisteredSuffixPatternMatch() != null) {
-			handlerMapping.setUseRegisteredSuffixPatternMatch(configurer.isUseRegisteredSuffixPatternMatch());
-		}
-		if (configurer.isUseTrailingSlashMatch() != null) {
-			handlerMapping.setUseTrailingSlashMatch(configurer.isUseTrailingSlashMatch());
-		}
-		if (configurer.getPathMatcher() != null) {
-			handlerMapping.setPathMatcher(configurer.getPathMatcher());
-		}
-		if (configurer.getUrlPathHelper() != null) {
-			handlerMapping.setUrlPathHelper(configurer.getUrlPathHelper());
+		RequestMappingHandlerMapping mapping = createRequestMappingHandlerMapping();
+		mapping.setOrder(0);
+		mapping.setContentNegotiationManager(contentNegotiationManager);
+		mapping.setApiVersionStrategy(apiVersionStrategy);
+
+		initHandlerMapping(mapping, conversionService, resourceUrlProvider);
+
+		PathMatchConfigurer pathConfig = getPathMatchConfigurer();
+		if (pathConfig.getPathPrefixes() != null) {
+			mapping.setPathPrefixes(pathConfig.getPathPrefixes());
 		}
 
-		return handlerMapping;
+		return mapping;
 	}
 
 	/**
-	 * Protected method for plugging in a custom sub-class of
+	 * Protected method for plugging in a custom subclass of
 	 * {@link RequestMappingHandlerMapping}.
+	 * @since 4.0
 	 */
 	protected RequestMappingHandlerMapping createRequestMappingHandlerMapping() {
 		return new RequestMappingHandlerMapping();
@@ -275,15 +297,18 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 
 	/**
 	 * Provide access to the shared handler interceptors used to configure
-	 * {@link HandlerMapping} instances with. This method cannot be overridden,
-	 * use {@link #addInterceptors(InterceptorRegistry)} instead.
+	 * {@link HandlerMapping} instances with.
+	 * <p>This method cannot be overridden; use {@link #addInterceptors} instead.
 	 */
-	protected final Object[] getInterceptors() {
+	protected final Object[] getInterceptors(
+			FormattingConversionService mvcConversionService,
+			ResourceUrlProvider mvcResourceUrlProvider) {
+
 		if (this.interceptors == null) {
 			InterceptorRegistry registry = new InterceptorRegistry();
 			addInterceptors(registry);
-			registry.addInterceptor(new ConversionServiceExposingInterceptor(mvcConversionService()));
-			registry.addInterceptor(new ResourceUrlProviderExposingInterceptor(mvcResourceUrlProvider()));
+			registry.addInterceptor(new ConversionServiceExposingInterceptor(mvcConversionService));
+			registry.addInterceptor(new ResourceUrlProviderExposingInterceptor(mvcResourceUrlProvider));
 			this.interceptors = registry.getInterceptors();
 		}
 		return this.interceptors.toArray();
@@ -312,10 +337,58 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 
 	/**
 	 * Override this method to configure path matching options.
-	 * @see PathMatchConfigurer
 	 * @since 4.0.3
+	 * @see PathMatchConfigurer
 	 */
-	public void configurePathMatch(PathMatchConfigurer configurer) {
+	protected void configurePathMatch(PathMatchConfigurer configurer) {
+	}
+
+	/**
+	 * Return a global {@link PathPatternParser} instance to use for parsing
+	 * patterns to match to the {@link org.springframework.http.server.RequestPath}.
+	 * The returned instance can be configured using
+	 * {@link #configurePathMatch(PathMatchConfigurer)}.
+	 * @since 5.3.4
+	 */
+	@Bean
+	public PathPatternParser mvcPatternParser() {
+		return getPathMatchConfigurer().getPatternParserOrDefault();
+	}
+
+	/**
+	 * Return a global {@link UrlPathHelper} instance which is used to resolve
+	 * the request mapping path for an application. The instance can be
+	 * configured via {@link #configurePathMatch(PathMatchConfigurer)}.
+	 * <p><b>Note:</b> This is only used when parsed patterns are not
+	 * {@link PathMatchConfigurer#setPatternParser enabled}.
+	 * @since 4.1
+	 * @deprecated use of {@link PathMatcher} and {@link UrlPathHelper} is deprecated
+	 * for use at runtime in web modules in favor of parsed patterns with
+	 * {@link PathPatternParser}.
+	 */
+	@SuppressWarnings("removal")
+	@Deprecated(since = "7.0", forRemoval = true)
+	@Bean
+	public UrlPathHelper mvcUrlPathHelper() {
+		return getPathMatchConfigurer().getUrlPathHelperOrDefault();
+	}
+
+	/**
+	 * Return a global {@link PathMatcher} instance which is used for URL path
+	 * matching with String patterns. The returned instance can be configured
+	 * using {@link #configurePathMatch(PathMatchConfigurer)}.
+	 * <p><b>Note:</b> This is only used when parsed patterns are not
+	 * {@link PathMatchConfigurer#setPatternParser enabled}.
+	 * @since 4.1
+	 * @deprecated use of {@link PathMatcher} and {@link UrlPathHelper} is deprecated
+	 * for use at runtime in web modules in favor of parsed patterns with
+	 * {@link PathPatternParser}.
+	 */
+	@SuppressWarnings("removal")
+	@Deprecated(since = "7.0", forRemoval = true)
+	@Bean
+	public PathMatcher mvcPathMatcher() {
+		return getPathMatchConfigurer().getPathMatcherOrDefault();
 	}
 
 	/**
@@ -325,30 +398,43 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	@Bean
 	public ContentNegotiationManager mvcContentNegotiationManager() {
 		if (this.contentNegotiationManager == null) {
-			ContentNegotiationConfigurer configurer = new ContentNegotiationConfigurer(this.servletContext);
+			ContentNegotiationConfigurer configurer = new ContentNegotiationConfigurer();
 			configurer.mediaTypes(getDefaultMediaTypes());
 			configureContentNegotiation(configurer);
-			try {
-				this.contentNegotiationManager = configurer.getContentNegotiationManager();
-			}
-			catch (Exception ex) {
-				throw new BeanInitializationException("Could not create ContentNegotiationManager", ex);
-			}
+			this.contentNegotiationManager = configurer.buildContentNegotiationManager();
 		}
 		return this.contentNegotiationManager;
 	}
 
 	protected Map<String, MediaType> getDefaultMediaTypes() {
-		Map<String, MediaType> map = new HashMap<String, MediaType>();
-		if (romePresent) {
+		Map<String, MediaType> map = new HashMap<>(4);
+		List<HttpMessageConverter<?>> messageConverters = getMessageConverters();
+		Set<MediaType> supportedMediaTypes = messageConverters.stream()
+				.flatMap(converter -> converter.getSupportedMediaTypes().stream())
+				.collect(Collectors.toSet());
+		if (supportedMediaTypes.contains(MediaType.APPLICATION_ATOM_XML)) {
 			map.put("atom", MediaType.APPLICATION_ATOM_XML);
-			map.put("rss", MediaType.valueOf("application/rss+xml"));
 		}
-		if (jaxb2Present || jackson2XmlPresent) {
+		if (supportedMediaTypes.contains(MediaType.APPLICATION_RSS_XML)) {
+			map.put("rss", MediaType.APPLICATION_RSS_XML);
+		}
+		MediaType xmlUtf8MediaType = new MediaType("application", "xml", StandardCharsets.UTF_8);
+		if (supportedMediaTypes.contains(MediaType.APPLICATION_XML) ||
+				supportedMediaTypes.contains(xmlUtf8MediaType)) {
 			map.put("xml", MediaType.APPLICATION_XML);
 		}
-		if (jackson2Present || gsonPresent) {
+		if (supportedMediaTypes.contains(MediaType.APPLICATION_JSON)) {
 			map.put("json", MediaType.APPLICATION_JSON);
+		}
+		MediaType smileMediaType = new MediaType("application", "x-jackson-smile");
+		if (supportedMediaTypes.contains(smileMediaType)) {
+			map.put("smile", smileMediaType);
+		}
+		if (supportedMediaTypes.contains(MediaType.APPLICATION_CBOR)) {
+			map.put("cbor", MediaType.APPLICATION_CBOR);
+		}
+		if (supportedMediaTypes.contains(MediaType.APPLICATION_ATOM_XML)) {
+			map.put("yaml", MediaType.APPLICATION_YAML);
 		}
 		return map;
 	}
@@ -361,23 +447,69 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	}
 
 	/**
+	 * Return the central strategy to manage API versioning with, or {@code null}
+	 * if the application does not use versioning.
+	 * @since 7.0
+	 */
+	@Bean
+	public @Nullable ApiVersionStrategy mvcApiVersionStrategy() {
+		if (this.apiVersionStrategy == null) {
+			ApiVersionConfigurer configurer = new ApiVersionConfigurer();
+			configureApiVersioning(configurer);
+			ApiVersionStrategy strategy = configurer.getApiVersionStrategy();
+			if (strategy != null) {
+				this.apiVersionStrategy = strategy;
+			}
+		}
+		return this.apiVersionStrategy;
+	}
+
+	/**
+	 * Override this method to configure API versioning.
+	 * @since 7.0
+	 */
+	protected void configureApiVersioning(ApiVersionConfigurer configurer) {
+	}
+
+	/**
 	 * Return a handler mapping ordered at 1 to map URL paths directly to
 	 * view names. To configure view controllers, override
 	 * {@link #addViewControllers}.
 	 */
 	@Bean
-	public HandlerMapping viewControllerHandlerMapping() {
-		ViewControllerRegistry registry = new ViewControllerRegistry();
-		registry.setApplicationContext(this.applicationContext);
+	public @Nullable HandlerMapping viewControllerHandlerMapping(
+			@Qualifier("mvcConversionService") FormattingConversionService conversionService,
+			@Qualifier("mvcResourceUrlProvider") ResourceUrlProvider resourceUrlProvider) {
+
+		ViewControllerRegistry registry = new ViewControllerRegistry(this.applicationContext);
 		addViewControllers(registry);
 
-		AbstractHandlerMapping handlerMapping = registry.getHandlerMapping();
-		handlerMapping = (handlerMapping != null ? handlerMapping : new EmptyHandlerMapping());
-		handlerMapping.setPathMatcher(mvcPathMatcher());
-		handlerMapping.setUrlPathHelper(mvcUrlPathHelper());
-		handlerMapping.setInterceptors(getInterceptors());
-		handlerMapping.setCorsConfigurations(getCorsConfigurations());
-		return handlerMapping;
+		AbstractHandlerMapping mapping = registry.buildHandlerMapping();
+		initHandlerMapping(mapping, conversionService, resourceUrlProvider);
+		return mapping;
+	}
+
+	@SuppressWarnings("removal")
+	private void initHandlerMapping(
+			@Nullable AbstractHandlerMapping mapping, FormattingConversionService conversionService,
+			ResourceUrlProvider resourceUrlProvider) {
+
+		if (mapping == null) {
+			return;
+		}
+		PathMatchConfigurer pathConfig = getPathMatchConfigurer();
+		if (pathConfig.preferPathMatcher()) {
+			mapping.setPatternParser(null);
+			mapping.setUrlPathHelper(pathConfig.getUrlPathHelperOrDefault());
+			mapping.setPathMatcher(pathConfig.getPathMatcherOrDefault());
+		}
+		else if (pathConfig.getPatternParser() != null) {
+			mapping.setPatternParser(pathConfig.getPatternParser());
+		}
+		// else: AbstractHandlerMapping defaults to PathPatternParser
+
+		mapping.setInterceptors(getInterceptors(conversionService, resourceUrlProvider));
+		mapping.setCorsConfigurations(getCorsConfigurations());
 	}
 
 	/**
@@ -392,11 +524,46 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 * paths to controller bean names.
 	 */
 	@Bean
-	public BeanNameUrlHandlerMapping beanNameHandlerMapping() {
+	public BeanNameUrlHandlerMapping beanNameHandlerMapping(
+			@Qualifier("mvcConversionService") FormattingConversionService conversionService,
+			@Qualifier("mvcResourceUrlProvider") ResourceUrlProvider resourceUrlProvider) {
+
 		BeanNameUrlHandlerMapping mapping = new BeanNameUrlHandlerMapping();
 		mapping.setOrder(2);
-		mapping.setInterceptors(getInterceptors());
+		initHandlerMapping(mapping, conversionService, resourceUrlProvider);
+		return mapping;
+	}
+
+	/**
+	 * Return a {@link RouterFunctionMapping} ordered at -1 to map
+	 * {@linkplain org.springframework.web.servlet.function.RouterFunction router functions}.
+	 * Consider overriding one of these other more fine-grained methods:
+	 * <ul>
+	 * <li>{@link #addInterceptors} for adding handler interceptors.
+	 * <li>{@link #addCorsMappings} to configure cross origin requests processing.
+	 * <li>{@link #configureMessageConverters} for adding custom message converters.
+	 * <li>{@link #configurePathMatch(PathMatchConfigurer)} for customizing the {@link PathPatternParser}.
+	 * </ul>
+	 * @since 5.2
+	 */
+	@Bean
+	public RouterFunctionMapping routerFunctionMapping(
+			@Qualifier("mvcConversionService") FormattingConversionService conversionService,
+			@Qualifier("mvcResourceUrlProvider") ResourceUrlProvider resourceUrlProvider,
+			@Qualifier("mvcApiVersionStrategy") @Nullable ApiVersionStrategy versionStrategy) {
+
+		RouterFunctionMapping mapping = new RouterFunctionMapping();
+		mapping.setOrder(-1);  // go before RequestMappingHandlerMapping
+		mapping.setInterceptors(getInterceptors(conversionService, resourceUrlProvider));
 		mapping.setCorsConfigurations(getCorsConfigurations());
+		mapping.setMessageConverters(getMessageConverters());
+		mapping.setApiVersionStrategy(versionStrategy);
+
+		PathPatternParser patternParser = getPathMatchConfigurer().getPatternParser();
+		if (patternParser != null) {
+			mapping.setPatternParser(patternParser);
+		}
+
 		return mapping;
 	}
 
@@ -405,24 +572,25 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 * resource handlers. To configure resource handling, override
 	 * {@link #addResourceHandlers}.
 	 */
+	@SuppressWarnings("removal")
 	@Bean
-	public HandlerMapping resourceHandlerMapping() {
+	public @Nullable HandlerMapping resourceHandlerMapping(
+			@Qualifier("mvcContentNegotiationManager") ContentNegotiationManager contentNegotiationManager,
+			@Qualifier("mvcConversionService") FormattingConversionService conversionService,
+			@Qualifier("mvcResourceUrlProvider") ResourceUrlProvider resourceUrlProvider) {
+
+		Assert.state(this.applicationContext != null, "No ApplicationContext set");
+		Assert.state(this.servletContext != null, "No ServletContext set");
+
+		PathMatchConfigurer pathConfig = getPathMatchConfigurer();
+
 		ResourceHandlerRegistry registry = new ResourceHandlerRegistry(this.applicationContext,
-				this.servletContext, mvcContentNegotiationManager());
+				this.servletContext, contentNegotiationManager, pathConfig.getUrlPathHelper());
 		addResourceHandlers(registry);
 
-		AbstractHandlerMapping handlerMapping = registry.getHandlerMapping();
-		if (handlerMapping != null) {
-			handlerMapping.setPathMatcher(mvcPathMatcher());
-			handlerMapping.setUrlPathHelper(mvcUrlPathHelper());
-			handlerMapping.setInterceptors(new HandlerInterceptor[] {
-					new ResourceUrlProviderExposingInterceptor(mvcResourceUrlProvider())});
-			handlerMapping.setCorsConfigurations(getCorsConfigurations());
-		}
-		else {
-			handlerMapping = new EmptyHandlerMapping();
-		}
-		return handlerMapping;
+		AbstractHandlerMapping mapping = registry.getHandlerMapping();
+		initHandlerMapping(mapping, conversionService, resourceUrlProvider);
+		return mapping;
 	}
 
 	/**
@@ -432,17 +600,16 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	protected void addResourceHandlers(ResourceHandlerRegistry registry) {
 	}
 
+	/**
+	 * A {@link ResourceUrlProvider} bean for use with the MVC dispatcher.
+	 * @since 4.1
+	 */
+	@SuppressWarnings("removal")
 	@Bean
 	public ResourceUrlProvider mvcResourceUrlProvider() {
 		ResourceUrlProvider urlProvider = new ResourceUrlProvider();
-		UrlPathHelper pathHelper = getPathMatchConfigurer().getUrlPathHelper();
-		if (pathHelper != null) {
-			urlProvider.setUrlPathHelper(pathHelper);
-		}
-		PathMatcher pathMatcher = getPathMatchConfigurer().getPathMatcher();
-		if (pathMatcher != null) {
-			urlProvider.setPathMatcher(pathMatcher);
-		}
+		urlProvider.setUrlPathHelper(getPathMatchConfigurer().getUrlPathHelperOrDefault());
+		urlProvider.setPathMatcher(getPathMatchConfigurer().getPathMatcherOrDefault());
 		return urlProvider;
 	}
 
@@ -452,12 +619,11 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 * override {@link #configureDefaultServletHandling}.
 	 */
 	@Bean
-	public HandlerMapping defaultServletHandlerMapping() {
-		DefaultServletHandlerConfigurer configurer = new DefaultServletHandlerConfigurer(servletContext);
+	public @Nullable HandlerMapping defaultServletHandlerMapping() {
+		Assert.state(this.servletContext != null, "No ServletContext set");
+		DefaultServletHandlerConfigurer configurer = new DefaultServletHandlerConfigurer(this.servletContext);
 		configureDefaultServletHandling(configurer);
-		AbstractHandlerMapping handlerMapping = configurer.getHandlerMapping();
-		handlerMapping = handlerMapping != null ? handlerMapping : new EmptyHandlerMapping();
-		return handlerMapping;
+		return configurer.buildHandlerMapping();
 	}
 
 	/**
@@ -478,27 +644,36 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 * </ul>
 	 */
 	@Bean
-	public RequestMappingHandlerAdapter requestMappingHandlerAdapter() {
+	public RequestMappingHandlerAdapter requestMappingHandlerAdapter(
+			@Qualifier("mvcContentNegotiationManager") ContentNegotiationManager contentNegotiationManager,
+			@Qualifier("mvcConversionService") FormattingConversionService conversionService,
+			@Qualifier("mvcValidator") Validator validator) {
+
 		RequestMappingHandlerAdapter adapter = createRequestMappingHandlerAdapter();
-		adapter.setContentNegotiationManager(mvcContentNegotiationManager());
+		adapter.setContentNegotiationManager(contentNegotiationManager);
 		adapter.setMessageConverters(getMessageConverters());
-		adapter.setWebBindingInitializer(getConfigurableWebBindingInitializer());
+		adapter.setWebBindingInitializer(getConfigurableWebBindingInitializer(conversionService, validator));
 		adapter.setCustomArgumentResolvers(getArgumentResolvers());
 		adapter.setCustomReturnValueHandlers(getReturnValueHandlers());
+		adapter.setErrorResponseInterceptors(getErrorResponseInterceptors());
 
-		if (jackson2Present) {
-			List<RequestBodyAdvice> requestBodyAdvices = new ArrayList<RequestBodyAdvice>();
-			requestBodyAdvices.add(new JsonViewRequestBodyAdvice());
+		if (JACKSON_PRESENT || JACKSON_2_PRESENT || KOTLIN_SERIALIZATION_PRESENT) {
+			List<RequestBodyAdvice> requestBodyAdvices = new ArrayList<>(2);
+			List<ResponseBodyAdvice<?>> responseBodyAdvices = new ArrayList<>(2);
+			if (JACKSON_PRESENT || JACKSON_2_PRESENT) {
+				requestBodyAdvices.add(new JsonViewRequestBodyAdvice());
+				requestBodyAdvices.add(new ContextClassRequestBodyAdvice());
+				responseBodyAdvices.add(new JsonViewResponseBodyAdvice());
+			}
+			if (KOTLIN_REFLECT_PRESENT && KOTLIN_SERIALIZATION_PRESENT) {
+				requestBodyAdvices.add(new KotlinRequestBodyAdvice());
+				responseBodyAdvices.add(new KotlinResponseBodyAdvice());
+			}
 			adapter.setRequestBodyAdvice(requestBodyAdvices);
-
-			List<ResponseBodyAdvice<?>> responseBodyAdvices = new ArrayList<ResponseBodyAdvice<?>>();
-			responseBodyAdvices.add(new JsonViewResponseBodyAdvice());
 			adapter.setResponseBodyAdvice(responseBodyAdvices);
 		}
 
-		AsyncSupportConfigurer configurer = new AsyncSupportConfigurer();
-		configureAsyncSupport(configurer);
-
+		AsyncSupportConfigurer configurer = getAsyncSupportConfigurer();
 		if (configurer.getTaskExecutor() != null) {
 			adapter.setTaskExecutor(configurer.getTaskExecutor());
 		}
@@ -512,35 +687,71 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	}
 
 	/**
-	 * Protected method for plugging in a custom sub-class of
+	 * Protected method for plugging in a custom subclass of
 	 * {@link RequestMappingHandlerAdapter}.
+	 * @since 4.3
 	 */
 	protected RequestMappingHandlerAdapter createRequestMappingHandlerAdapter() {
 		return new RequestMappingHandlerAdapter();
 	}
 
 	/**
+	 * Returns a {@link HandlerFunctionAdapter} for processing requests through
+	 * {@linkplain org.springframework.web.servlet.function.HandlerFunction handler functions}.
+	 * @since 5.2
+	 */
+	@Bean
+	public HandlerFunctionAdapter handlerFunctionAdapter() {
+		HandlerFunctionAdapter adapter = new HandlerFunctionAdapter();
+
+		AsyncSupportConfigurer configurer = getAsyncSupportConfigurer();
+		if (configurer.getTimeout() != null) {
+			adapter.setAsyncRequestTimeout(configurer.getTimeout());
+		}
+		return adapter;
+	}
+
+	/**
 	 * Return the {@link ConfigurableWebBindingInitializer} to use for
 	 * initializing all {@link WebDataBinder} instances.
 	 */
-	protected ConfigurableWebBindingInitializer getConfigurableWebBindingInitializer() {
+	protected ConfigurableWebBindingInitializer getConfigurableWebBindingInitializer(
+			FormattingConversionService mvcConversionService, Validator mvcValidator) {
+
 		ConfigurableWebBindingInitializer initializer = new ConfigurableWebBindingInitializer();
-		initializer.setConversionService(mvcConversionService());
-		initializer.setValidator(mvcValidator());
-		initializer.setMessageCodesResolver(getMessageCodesResolver());
+		initializer.setConversionService(mvcConversionService);
+		initializer.setValidator(mvcValidator);
+		MessageCodesResolver messageCodesResolver = getMessageCodesResolver();
+		if (messageCodesResolver != null) {
+			initializer.setMessageCodesResolver(messageCodesResolver);
+		}
 		return initializer;
 	}
 
 	/**
-	 * Return a {@link FormattingConversionService} for use with annotated
-	 * controller methods and the {@code spring:eval} JSP tag.
-	 * Also see {@link #addFormatters} as an alternative to overriding this method.
+	 * Override this method to provide a custom {@link MessageCodesResolver}.
+	 */
+	protected @Nullable MessageCodesResolver getMessageCodesResolver() {
+		return null;
+	}
+
+	/**
+	 * Return a {@link FormattingConversionService} for use with annotated controllers.
+	 * <p>See {@link #addFormatters} as an alternative to overriding this method.
 	 */
 	@Bean
 	public FormattingConversionService mvcConversionService() {
 		FormattingConversionService conversionService = new DefaultFormattingConversionService();
 		addFormatters(conversionService);
 		return conversionService;
+	}
+
+	/**
+	 * Override this method to add custom {@link Converter} and/or {@link Formatter}
+	 * delegates to the common {@link FormattingConversionService}.
+	 * @see #mvcConversionService()
+	 */
+	protected void addFormatters(FormatterRegistry registry) {
 	}
 
 	/**
@@ -555,19 +766,13 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	public Validator mvcValidator() {
 		Validator validator = getValidator();
 		if (validator == null) {
-			if (ClassUtils.isPresent("javax.validation.Validator", getClass().getClassLoader())) {
-				Class<?> clazz;
+			if (ClassUtils.isPresent("jakarta.validation.Validator", getClass().getClassLoader())) {
 				try {
-					String className = "org.springframework.validation.beanvalidation.OptionalValidatorFactoryBean";
-					clazz = ClassUtils.forName(className, WebMvcConfigurationSupport.class.getClassLoader());
+					validator = new OptionalValidatorFactoryBean();
 				}
-				catch (ClassNotFoundException ex) {
-					throw new BeanInitializationException("Could not find default validator class", ex);
+				catch (Throwable ex) {
+					throw new BeanInitializationException("Failed to create default validator", ex);
 				}
-				catch (LinkageError ex) {
-					throw new BeanInitializationException("Could not load default validator class", ex);
-				}
-				validator = (Validator) BeanUtils.instantiate(clazz);
 			}
 			else {
 				validator = new NoOpValidator();
@@ -577,121 +782,74 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	}
 
 	/**
-	 * Return a global {@link PathMatcher} instance for path matching
-	 * patterns in {@link HandlerMapping}s.
-	 * This instance can be configured using the {@link PathMatchConfigurer}
-	 * in {@link #configurePathMatch(PathMatchConfigurer)}.
-	 * @since 4.1
-	 */
-	@Bean
-	public PathMatcher mvcPathMatcher() {
-		if (getPathMatchConfigurer().getPathMatcher() != null) {
-			return getPathMatchConfigurer().getPathMatcher();
-		}
-		else {
-			return new AntPathMatcher();
-		}
-	}
-
-	/**
-	 * Return a global {@link UrlPathHelper} instance for path matching
-	 * patterns in {@link HandlerMapping}s.
-	 * This instance can be configured using the {@link PathMatchConfigurer}
-	 * in {@link #configurePathMatch(PathMatchConfigurer)}.
-	 * @since 4.1
-	 */
-	@Bean
-	public UrlPathHelper mvcUrlPathHelper() {
-		if (getPathMatchConfigurer().getUrlPathHelper() != null) {
-			return getPathMatchConfigurer().getUrlPathHelper();
-		}
-		else {
-			return new UrlPathHelper();
-		}
-	}
-
-	/**
 	 * Override this method to provide a custom {@link Validator}.
 	 */
-	protected Validator getValidator() {
-		return null;
-	}
-
-	/**
-	 * Override this method to provide a custom {@link MessageCodesResolver}.
-	 */
-	protected MessageCodesResolver getMessageCodesResolver() {
+	protected @Nullable Validator getValidator() {
 		return null;
 	}
 
 	/**
 	 * Provide access to the shared custom argument resolvers used by the
-	 * {@link RequestMappingHandlerAdapter} and the
-	 * {@link ExceptionHandlerExceptionResolver}. This method cannot be
-	 * overridden, use {@link #addArgumentResolvers(List)} instead.
+	 * {@link RequestMappingHandlerAdapter} and the {@link ExceptionHandlerExceptionResolver}.
+	 * <p>This method cannot be overridden; use {@link #addArgumentResolvers} instead.
+	 * @since 4.3
 	 */
 	protected final List<HandlerMethodArgumentResolver> getArgumentResolvers() {
 		if (this.argumentResolvers == null) {
-			this.argumentResolvers = new ArrayList<HandlerMethodArgumentResolver>();
+			this.argumentResolvers = new ArrayList<>();
 			addArgumentResolvers(this.argumentResolvers);
 		}
 		return this.argumentResolvers;
 	}
 
 	/**
-	 * Add custom {@link HandlerMethodArgumentResolver}s to use in addition to
-	 * the ones registered by default.
-	 * <p>Custom argument resolvers are invoked before built-in resolvers
-	 * except for those that rely on the presence of annotations (e.g.
-	 * {@code @RequestParameter}, {@code @PathVariable}, etc.).
-	 * The latter can  be customized by configuring the
+	 * Add custom {@link HandlerMethodArgumentResolver HandlerMethodArgumentResolvers}
+	 * to use in addition to the ones registered by default.
+	 * <p>Custom argument resolvers are invoked before built-in resolvers except for
+	 * those that rely on the presence of annotations (for example, {@code @RequestParameter},
+	 * {@code @PathVariable}, etc). The latter can be customized by configuring the
 	 * {@link RequestMappingHandlerAdapter} directly.
-	 * @param argumentResolvers the list of custom converters;
-	 * 	initially an empty list.
+	 * @param argumentResolvers the list of custom converters (initially an empty list)
 	 */
 	protected void addArgumentResolvers(List<HandlerMethodArgumentResolver> argumentResolvers) {
 	}
 
 	/**
 	 * Provide access to the shared return value handlers used by the
-	 * {@link RequestMappingHandlerAdapter} and the
-	 * {@link ExceptionHandlerExceptionResolver}. This method cannot be
-	 * overridden, use {@link #addReturnValueHandlers(List)} instead.
+	 * {@link RequestMappingHandlerAdapter} and the {@link ExceptionHandlerExceptionResolver}.
+	 * <p>This method cannot be overridden; use {@link #addReturnValueHandlers} instead.
+	 * @since 4.3
 	 */
 	protected final List<HandlerMethodReturnValueHandler> getReturnValueHandlers() {
 		if (this.returnValueHandlers == null) {
-			this.returnValueHandlers = new ArrayList<HandlerMethodReturnValueHandler>();
+			this.returnValueHandlers = new ArrayList<>();
 			addReturnValueHandlers(this.returnValueHandlers);
 		}
 		return this.returnValueHandlers;
 	}
 
 	/**
-	 * Add custom {@link HandlerMethodReturnValueHandler}s in addition to the
-	 * ones registered by default.
-	 * <p>Custom return value handlers are invoked before built-in ones except
-	 * for those that rely on the presence of annotations (e.g.
-	 * {@code @ResponseBody}, {@code @ModelAttribute}, etc.).
-	 * The latter can be customized by configuring the
+	 * Add custom {@link HandlerMethodReturnValueHandler HandlerMethodReturnValueHandlers}
+	 * in addition to the ones registered by default.
+	 * <p>Custom return value handlers are invoked before built-in ones except for
+	 * those that rely on the presence of annotations (for example, {@code @ResponseBody},
+	 * {@code @ModelAttribute}, etc). The latter can be customized by configuring the
 	 * {@link RequestMappingHandlerAdapter} directly.
-	 * @param returnValueHandlers the list of custom handlers;
-	 * initially an empty list.
+	 * @param returnValueHandlers the list of custom handlers (initially an empty list)
 	 */
 	protected void addReturnValueHandlers(List<HandlerMethodReturnValueHandler> returnValueHandlers) {
 	}
 
 	/**
-	 * Provides access to the shared {@link HttpMessageConverter}s used by the
-	 * {@link RequestMappingHandlerAdapter} and the
+	 * Provides access to the shared {@link HttpMessageConverter HttpMessageConverters}
+	 * used by the {@link RequestMappingHandlerAdapter} and the
 	 * {@link ExceptionHandlerExceptionResolver}.
-	 * This method cannot be overridden.
-	 * Use {@link #configureMessageConverters(List)} instead.
-	 * Also see {@link #addDefaultHttpMessageConverters(List)} that can be
-	 * used to add default message converters.
+	 * <p>This method cannot be overridden; use {@link #configureMessageConverters} instead.
+	 * Also see {@link #addDefaultHttpMessageConverters} for adding default message converters.
 	 */
 	protected final List<HttpMessageConverter<?>> getMessageConverters() {
 		if (this.messageConverters == null) {
-			this.messageConverters = new ArrayList<HttpMessageConverter<?>>();
+			this.messageConverters = new ArrayList<>();
 			configureMessageConverters(this.messageConverters);
 			if (this.messageConverters.isEmpty()) {
 				addDefaultHttpMessageConverters(this.messageConverters);
@@ -701,93 +859,104 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 		return this.messageConverters;
 	}
 
+
 	/**
-	 * Override this method to add custom {@link HttpMessageConverter}s to use
-	 * with the {@link RequestMappingHandlerAdapter} and the
-	 * {@link ExceptionHandlerExceptionResolver}. Adding converters to the
-	 * list turns off the default converters that would otherwise be registered
-	 * by default. Also see {@link #addDefaultHttpMessageConverters(List)} that
-	 * can be used to add default message converters.
-	 * @param converters a list to add message converters to;
-	 * initially an empty list.
+	 * Override this method to create a custom {@link HttpMessageConverters}.
+	 * Converters will be used with the
+	 * {@link RequestMappingHandlerAdapter} and the {@link ExceptionHandlerExceptionResolver}.
+	 * <p>By default, this will create an instance with default message converters registered,
+	 * if present on the classpath.
+	 * @since 7.0
 	 */
+	protected HttpMessageConverters createMessageConverters() {
+		HttpMessageConverters.ServerBuilder serverBuilder = HttpMessageConverters.forServer().registerDefaults();
+		configureMessageConverters(serverBuilder);
+		return serverBuilder.build();
+	}
+
+	/**
+	 * Override this method to configure the message converters on the given
+	 * {@link HttpMessageConverters.Builder builder}.
+	 * @param builder the {@code HttpMessageConverters} builder to configure
+	 * @since 7.0
+	 */
+	protected void configureMessageConverters(HttpMessageConverters.ServerBuilder builder) {
+	}
+
+	/**
+	 * Override this method to add custom {@link HttpMessageConverter message converters}
+	 * to use with the {@link RequestMappingHandlerAdapter} and the
+	 * {@link ExceptionHandlerExceptionResolver}.
+	 * <p>Adding converters to the list turns off the default converters that would
+	 * otherwise be registered by default. Also see {@link #addDefaultHttpMessageConverters}
+	 * for adding default message converters.
+	 * @param converters a list to add message converters to (initially an empty list)
+	 * @deprecated since 7.0 in favor of {@link #configureMessageConverters(HttpMessageConverters.ServerBuilder)}
+	 */
+	@Deprecated(since = "7.0", forRemoval = true)
 	protected void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
 	}
 
 	/**
-	 * Override this method to extend or modify the list of converters after it
-	 * has been configured. This may be useful for example to allow default
-	 * converters to be registered and then insert a custom converter through
-	 * this method.
-	 * @param converters the list of configured converters to extend.
+	 * Override this method to extend or modify the list of converters after it has
+	 * been configured. This may be useful for example to allow default converters
+	 * to be registered and then insert a custom converter through this method.
+	 * @param converters the list of configured converters to extend
 	 * @since 4.1.3
+	 * @deprecated since 7.0 in favor of {@link #configureMessageConverters(HttpMessageConverters.ServerBuilder)}
 	 */
+	@Deprecated(since = "7.0", forRemoval = true)
 	protected void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
 	}
 
 	/**
 	 * Adds a set of default HttpMessageConverter instances to the given list.
-	 * Subclasses can call this method from {@link #configureMessageConverters(List)}.
+	 * Subclasses can call this method from {@link #configureMessageConverters}.
 	 * @param messageConverters the list to add the default message converters to
+	 * @deprecated since 7.0 in favor of {@link #createMessageConverters()}
 	 */
+	@Deprecated(since = "7.0", forRemoval = true)
 	protected final void addDefaultHttpMessageConverters(List<HttpMessageConverter<?>> messageConverters) {
-		StringHttpMessageConverter stringConverter = new StringHttpMessageConverter();
-		stringConverter.setWriteAcceptCharset(false);
-
-		messageConverters.add(new ByteArrayHttpMessageConverter());
-		messageConverters.add(stringConverter);
-		messageConverters.add(new ResourceHttpMessageConverter());
-		messageConverters.add(new SourceHttpMessageConverter<Source>());
-		messageConverters.add(new AllEncompassingFormHttpMessageConverter());
-
-		if (romePresent) {
-			messageConverters.add(new AtomFeedHttpMessageConverter());
-			messageConverters.add(new RssChannelHttpMessageConverter());
-		}
-
-		if (jackson2XmlPresent) {
-			ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.xml().applicationContext(this.applicationContext).build();
-			messageConverters.add(new MappingJackson2XmlHttpMessageConverter(objectMapper));
-		}
-		else if (jaxb2Present) {
-			messageConverters.add(new Jaxb2RootElementHttpMessageConverter());
-		}
-
-		if (jackson2Present) {
-			ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json().applicationContext(this.applicationContext).build();
-			messageConverters.add(new MappingJackson2HttpMessageConverter(objectMapper));
-		}
-		else if (gsonPresent) {
-			messageConverters.add(new GsonHttpMessageConverter());
-		}
+		HttpMessageConverters converters = createMessageConverters();
+		converters.forEach(messageConverters::add);
 	}
 
 	/**
-	 * Override this method to add custom {@link Converter}s and {@link Formatter}s.
+	 * Callback for building the {@link AsyncSupportConfigurer}.
+	 * Delegates to {@link #configureAsyncSupport(AsyncSupportConfigurer)}.
+	 * @since 5.3.2
 	 */
-	protected void addFormatters(FormatterRegistry registry) {
+	protected AsyncSupportConfigurer getAsyncSupportConfigurer() {
+		if (this.asyncSupportConfigurer == null) {
+			this.asyncSupportConfigurer = new AsyncSupportConfigurer();
+			configureAsyncSupport(this.asyncSupportConfigurer);
+		}
+		return this.asyncSupportConfigurer;
 	}
 
 	/**
 	 * Override this method to configure asynchronous request processing options.
 	 * @see AsyncSupportConfigurer
 	 */
-	public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+	protected void configureAsyncSupport(AsyncSupportConfigurer configurer) {
 	}
 
 	/**
 	 * Return an instance of {@link CompositeUriComponentsContributor} for use with
 	 * {@link org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder}.
+	 * @since 4.0
 	 */
 	@Bean
-	public CompositeUriComponentsContributor mvcUriComponentsContributor() {
+	public CompositeUriComponentsContributor mvcUriComponentsContributor(
+			@Qualifier("mvcConversionService") FormattingConversionService conversionService,
+			@Qualifier("requestMappingHandlerAdapter") RequestMappingHandlerAdapter requestMappingHandlerAdapter) {
 		return new CompositeUriComponentsContributor(
-				requestMappingHandlerAdapter().getArgumentResolvers(), mvcConversionService());
+				requestMappingHandlerAdapter.getArgumentResolvers(), conversionService);
 	}
 
 	/**
 	 * Returns a {@link HttpRequestHandlerAdapter} for processing requests
-	 * with {@link HttpRequestHandler}s.
+	 * with {@link HttpRequestHandler HttpRequestHandlers}.
 	 */
 	@Bean
 	public HttpRequestHandlerAdapter httpRequestHandlerAdapter() {
@@ -804,24 +973,21 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	}
 
 	/**
-	 * Returns a {@link HandlerExceptionResolverComposite} containing a list
-	 * of exception resolvers obtained either through
-	 * {@link #configureHandlerExceptionResolvers(List)} or through
-	 * {@link #addDefaultHandlerExceptionResolvers(List)}.
-	 * <p><strong>Note:</strong> This method cannot be made final due to CGLib
-	 * constraints. Rather than overriding it, consider overriding
-	 * {@link #configureHandlerExceptionResolvers(List)}, which allows
-	 * providing a list of resolvers.
+	 * Returns a {@link HandlerExceptionResolverComposite} containing a list of exception
+	 * resolvers obtained either through {@link #configureHandlerExceptionResolvers} or
+	 * through {@link #addDefaultHandlerExceptionResolvers}.
+	 * <p><strong>Note:</strong> This method cannot be made final due to CGLIB constraints.
+	 * Rather than overriding it, consider overriding {@link #configureHandlerExceptionResolvers}
+	 * which allows for providing a list of resolvers.
 	 */
 	@Bean
-	public HandlerExceptionResolver handlerExceptionResolver() {
-		List<HandlerExceptionResolver> exceptionResolvers = new ArrayList<HandlerExceptionResolver>();
+	public HandlerExceptionResolver handlerExceptionResolver(
+			@Qualifier("mvcContentNegotiationManager") ContentNegotiationManager contentNegotiationManager) {
+		List<HandlerExceptionResolver> exceptionResolvers = new ArrayList<>();
 		configureHandlerExceptionResolvers(exceptionResolvers);
-
 		if (exceptionResolvers.isEmpty()) {
-			addDefaultHandlerExceptionResolvers(exceptionResolvers);
+			addDefaultHandlerExceptionResolvers(exceptionResolvers, contentNegotiationManager);
 		}
-
 		extendHandlerExceptionResolvers(exceptionResolvers);
 		HandlerExceptionResolverComposite composite = new HandlerExceptionResolverComposite();
 		composite.setOrder(0);
@@ -831,51 +997,60 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 
 	/**
 	 * Override this method to configure the list of
-	 * {@link HandlerExceptionResolver}s to use. Adding resolvers to the list
-	 * turns off the default resolvers that would otherwise be registered by
-	 * default. Also see {@link #addDefaultHandlerExceptionResolvers(List)}
+	 * {@link HandlerExceptionResolver HandlerExceptionResolvers} to use.
+	 * <p>Adding resolvers to the list turns off the default resolvers that would otherwise
+	 * be registered by default. Also see {@link #addDefaultHandlerExceptionResolvers}
 	 * that can be used to add the default exception resolvers.
-	 * @param exceptionResolvers a list to add exception resolvers to;
-	 * initially an empty list.
+	 * @param exceptionResolvers a list to add exception resolvers to (initially an empty list)
 	 */
 	protected void configureHandlerExceptionResolvers(List<HandlerExceptionResolver> exceptionResolvers) {
 	}
 
 	/**
 	 * Override this method to extend or modify the list of
-	 * {@link HandlerExceptionResolver}s after it has been configured. This may
-	 * be useful for example to allow default resolvers to be registered and then
-	 * insert a custom one through this method.
+	 * {@link HandlerExceptionResolver HandlerExceptionResolvers} after it has been configured.
+	 * <p>This may be useful for example to allow default resolvers to be registered
+	 * and then insert a custom one through this method.
 	 * @param exceptionResolvers the list of configured resolvers to extend.
-	 * @since 4.3.1
+	 * @since 4.3
 	 */
 	protected void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> exceptionResolvers) {
 	}
 
 	/**
-	 * A method available to subclasses for adding default {@link HandlerExceptionResolver}s.
+	 * A method available to subclasses for adding default
+	 * {@link HandlerExceptionResolver HandlerExceptionResolvers}.
 	 * <p>Adds the following exception resolvers:
 	 * <ul>
-	 * <li>{@link ExceptionHandlerExceptionResolver}
-	 * for handling exceptions through @{@link ExceptionHandler} methods.
-	 * <li>{@link ResponseStatusExceptionResolver}
-	 * for exceptions annotated with @{@link ResponseStatus}.
-	 * <li>{@link DefaultHandlerExceptionResolver}
-	 * for resolving known Spring exception types
+	 * <li>{@link ExceptionHandlerExceptionResolver} for handling exceptions through
+	 * {@link org.springframework.web.bind.annotation.ExceptionHandler} methods.
+	 * <li>{@link ResponseStatusExceptionResolver} for exceptions annotated with
+	 * {@link org.springframework.web.bind.annotation.ResponseStatus}.
+	 * <li>{@link DefaultHandlerExceptionResolver} for resolving known Spring exception types
 	 * </ul>
 	 */
-	protected final void addDefaultHandlerExceptionResolvers(List<HandlerExceptionResolver> exceptionResolvers) {
+	protected final void addDefaultHandlerExceptionResolvers(List<HandlerExceptionResolver> exceptionResolvers,
+			ContentNegotiationManager mvcContentNegotiationManager) {
+
 		ExceptionHandlerExceptionResolver exceptionHandlerResolver = createExceptionHandlerExceptionResolver();
-		exceptionHandlerResolver.setContentNegotiationManager(mvcContentNegotiationManager());
+		exceptionHandlerResolver.setContentNegotiationManager(mvcContentNegotiationManager);
 		exceptionHandlerResolver.setMessageConverters(getMessageConverters());
 		exceptionHandlerResolver.setCustomArgumentResolvers(getArgumentResolvers());
 		exceptionHandlerResolver.setCustomReturnValueHandlers(getReturnValueHandlers());
-		if (jackson2Present) {
-			List<ResponseBodyAdvice<?>> interceptors = new ArrayList<ResponseBodyAdvice<?>>();
-			interceptors.add(new JsonViewResponseBodyAdvice());
-			exceptionHandlerResolver.setResponseBodyAdvice(interceptors);
+		exceptionHandlerResolver.setErrorResponseInterceptors(getErrorResponseInterceptors());
+		if (JACKSON_PRESENT || JACKSON_2_PRESENT || KOTLIN_SERIALIZATION_PRESENT) {
+			List<ResponseBodyAdvice<?>> responseBodyAdvices = new ArrayList<>(2);
+			if (JACKSON_PRESENT || JACKSON_2_PRESENT) {
+				responseBodyAdvices.add(new JsonViewResponseBodyAdvice());
+			}
+			if (KOTLIN_SERIALIZATION_PRESENT) {
+				responseBodyAdvices.add(new KotlinResponseBodyAdvice());
+			}
+			exceptionHandlerResolver.setResponseBodyAdvice(responseBodyAdvices);
 		}
-		exceptionHandlerResolver.setApplicationContext(this.applicationContext);
+		if (this.applicationContext != null) {
+			exceptionHandlerResolver.setApplicationContext(this.applicationContext);
+		}
 		exceptionHandlerResolver.afterPropertiesSet();
 		exceptionResolvers.add(exceptionHandlerResolver);
 
@@ -887,17 +1062,41 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	}
 
 	/**
-	 * Protected method for plugging in a custom sub-class of
+	 * Protected method for plugging in a custom subclass of
 	 * {@link ExceptionHandlerExceptionResolver}.
+	 * @since 4.3
 	 */
 	protected ExceptionHandlerExceptionResolver createExceptionHandlerExceptionResolver() {
 		return new ExceptionHandlerExceptionResolver();
 	}
 
 	/**
+	 * Provide access to the list of {@link ErrorResponse.Interceptor}'s to apply
+	 * when rendering error responses.
+	 * <p>This method cannot be overridden; use {@link #configureErrorResponseInterceptors(List)} instead.
+	 * @since 6.2
+	 */
+	protected final List<ErrorResponse.Interceptor> getErrorResponseInterceptors() {
+		if (this.errorResponseInterceptors == null) {
+			this.errorResponseInterceptors = new ArrayList<>();
+			configureErrorResponseInterceptors(this.errorResponseInterceptors);
+		}
+		return this.errorResponseInterceptors;
+	}
+
+	/**
+	 * Override this method for control over the {@link ErrorResponse.Interceptor}'s
+	 * to apply when rendering error responses.
+	 * @param interceptors the list to add handlers to
+	 * @since 6.2
+	 */
+	protected void configureErrorResponseInterceptors(List<ErrorResponse.Interceptor> interceptors) {
+	}
+
+	/**
 	 * Register a {@link ViewResolverComposite} that contains a chain of view resolvers
 	 * to use for view resolution.
-	 * By default this resolver is ordered at 0 unless content negotiation view
+	 * By default, this resolver is ordered at 0 unless content negotiation view
 	 * resolution is used in which case the order is raised to
 	 * {@link org.springframework.core.Ordered#HIGHEST_PRECEDENCE
 	 * Ordered.HIGHEST_PRECEDENCE}.
@@ -907,13 +1106,13 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 * @since 4.1
 	 */
 	@Bean
-	public ViewResolver mvcViewResolver() {
-		ViewResolverRegistry registry = new ViewResolverRegistry();
-		registry.setContentNegotiationManager(mvcContentNegotiationManager());
-		registry.setApplicationContext(this.applicationContext);
+	public ViewResolver mvcViewResolver(
+			@Qualifier("mvcContentNegotiationManager") ContentNegotiationManager contentNegotiationManager) {
+		ViewResolverRegistry registry =
+				new ViewResolverRegistry(contentNegotiationManager, this.applicationContext);
 		configureViewResolvers(registry);
 
-		if (registry.getViewResolvers().isEmpty()) {
+		if (registry.getViewResolvers().isEmpty() && this.applicationContext != null) {
 			String[] names = BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
 					this.applicationContext, ViewResolver.class, true, false);
 			if (names.length == 1) {
@@ -924,8 +1123,12 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 		ViewResolverComposite composite = new ViewResolverComposite();
 		composite.setOrder(registry.getOrder());
 		composite.setViewResolvers(registry.getViewResolvers());
-		composite.setApplicationContext(this.applicationContext);
-		composite.setServletContext(this.servletContext);
+		if (this.applicationContext != null) {
+			composite.setApplicationContext(this.applicationContext);
+		}
+		if (this.servletContext != null) {
+			composite.setServletContext(this.servletContext);
+		}
 		return composite;
 	}
 
@@ -937,6 +1140,8 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	}
 
 	/**
+	 * Return the registered {@link CorsConfiguration} objects,
+	 * keyed by path pattern.
 	 * @since 4.2
 	 */
 	protected final Map<String, CorsConfiguration> getCorsConfigurations() {
@@ -949,20 +1154,33 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	}
 
 	/**
-	 * Override this method to configure cross origin requests processing.
+	 * Override this method to configure cross-origin requests processing.
 	 * @since 4.2
 	 * @see CorsRegistry
 	 */
 	protected void addCorsMappings(CorsRegistry registry) {
 	}
 
+	@SuppressWarnings("removal")
+	@Bean
+	@Lazy
+	public HandlerMappingIntrospector mvcHandlerMappingIntrospector() {
+		return new HandlerMappingIntrospector();
+	}
 
-	private static final class EmptyHandlerMapping extends AbstractHandlerMapping {
+	@Bean
+	public LocaleResolver localeResolver() {
+		return new AcceptHeaderLocaleResolver();
+	}
 
-		@Override
-		protected Object getHandlerInternal(HttpServletRequest request) {
-			return null;
-		}
+	@Bean
+	public FlashMapManager flashMapManager() {
+		return new SessionFlashMapManager();
+	}
+
+	@Bean
+	public RequestToViewNameTranslator viewNameTranslator() {
+		return new DefaultRequestToViewNameTranslator();
 	}
 
 
@@ -974,7 +1192,7 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 		}
 
 		@Override
-		public void validate(Object target, Errors errors) {
+		public void validate(@Nullable Object target, Errors errors) {
 		}
 	}
 

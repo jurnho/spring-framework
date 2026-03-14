@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,7 @@
 
 package org.springframework.beans.factory.xml;
 
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
@@ -68,7 +69,7 @@ public interface NamespaceHandler {
 	 * @param parserContext the object encapsulating the current state of the parsing process
 	 * @return the primary {@code BeanDefinition} (can be {@code null} as explained above)
 	 */
-	BeanDefinition parse(Element element, ParserContext parserContext);
+	@Nullable BeanDefinition parse(Element element, ParserContext parserContext);
 
 	/**
 	 * Parse the specified {@link Node} and decorate the supplied
@@ -89,6 +90,6 @@ public interface NamespaceHandler {
 	 * A {@code null} value is strictly speaking invalid, but will be leniently
 	 * treated like the case where the original bean definition gets returned.
 	 */
-	BeanDefinitionHolder decorate(Node source, BeanDefinitionHolder definition, ParserContext parserContext);
+	@Nullable BeanDefinitionHolder decorate(Node source, BeanDefinitionHolder definition, ParserContext parserContext);
 
 }

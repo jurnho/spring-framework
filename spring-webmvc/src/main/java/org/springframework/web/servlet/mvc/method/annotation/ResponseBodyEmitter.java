@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,12 +17,20 @@
 package org.springframework.web.servlet.mvc.method.annotation;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.util.Assert;
+import org.springframework.util.ObjectUtils;
 
 /**
  * A controller method return value type for asynchronous request processing
@@ -56,23 +64,33 @@ import org.springframework.util.Assert;
  *
  * @author Rossen Stoyanchev
  * @author Juergen Hoeller
+ * @author Brian Clozel
+ * @author Taeik Lim
  * @since 4.2
  */
 public class ResponseBodyEmitter {
 
-	private final Long timeout;
+	private final @Nullable Long timeout;
 
-	private final Set<DataWithMediaType> earlySendAttempts = new LinkedHashSet<DataWithMediaType>(8);
+	private @Nullable Handler handler;
 
-	private Handler handler;
+	/** Store send data before handler is initialized. */
+	private final Set<DataWithMediaType> earlySendAttempts = new LinkedHashSet<>(8);
 
+	/** Store successful completion before the handler is initialized. */
 	private boolean complete;
 
-	private Throwable failure;
+	/** Store an error before the handler is initialized. */
+	private @Nullable Throwable failure;
 
 	private final DefaultCallback timeoutCallback = new DefaultCallback();
 
+	private final ErrorCallback errorCallback = new ErrorCallback();
+
 	private final DefaultCallback completionCallback = new DefaultCallback();
+
+	/** Guards access to write operations on the response. */
+	protected final Lock writeLock = new ReentrantLock();
 
 
 	/**
@@ -87,7 +105,7 @@ public class ResponseBodyEmitter {
 	 * <p>By default not set in which case the default configured in the MVC
 	 * Java Config or the MVC namespace is used, or if that's not set, then the
 	 * timeout depends on the default of the underlying server.
-	 * @param timeout timeout value in milliseconds
+	 * @param timeout the timeout value in milliseconds
 	 */
 	public ResponseBodyEmitter(Long timeout) {
 		this.timeout = timeout;
@@ -97,30 +115,52 @@ public class ResponseBodyEmitter {
 	/**
 	 * Return the configured timeout value, if any.
 	 */
-	public Long getTimeout() {
+	public @Nullable Long getTimeout() {
 		return this.timeout;
 	}
 
 
-	synchronized void initialize(Handler handler) throws IOException {
-		this.handler = handler;
+	void initialize(Handler handler) throws IOException {
+		this.writeLock.lock();
+		try {
+			this.handler = handler;
 
-		for (DataWithMediaType sendAttempt : this.earlySendAttempts) {
-			sendInternal(sendAttempt.getData(), sendAttempt.getMediaType());
-		}
-		this.earlySendAttempts.clear();
+			try {
+				sendInternal(this.earlySendAttempts);
+			}
+			finally {
+				this.earlySendAttempts.clear();
+			}
 
-		if (this.complete) {
-			if (this.failure != null) {
-				this.handler.completeWithError(this.failure);
+			if (this.complete) {
+				if (this.failure != null) {
+					this.handler.completeWithError(this.failure);
+				}
+				else {
+					this.handler.complete();
+				}
 			}
 			else {
-				this.handler.complete();
+				this.handler.onTimeout(this.timeoutCallback);
+				this.handler.onError(this.errorCallback);
+				this.handler.onCompletion(this.completionCallback);
 			}
 		}
-		else {
-			this.handler.onTimeout(this.timeoutCallback);
-			this.handler.onCompletion(this.completionCallback);
+		finally {
+			this.writeLock.unlock();
+		}
+	}
+
+	void initializeWithError(Throwable ex) {
+		this.writeLock.lock();
+		try {
+			this.complete = true;
+			this.failure = ex;
+			this.earlySendAttempts.clear();
+			this.errorCallback.accept(ex);
+		}
+		finally {
+			this.writeLock.unlock();
 		}
 	}
 
@@ -137,6 +177,11 @@ public class ResponseBodyEmitter {
 	 * Write the given object to the response.
 	 * <p>If any exception occurs a dispatch is made back to the app server where
 	 * Spring MVC will pass the exception through its exception handling mechanism.
+	 * <p><strong>Note:</strong> if the send fails with an IOException, you do
+	 * not need to call {@link #completeWithError(Throwable)} in order to clean
+	 * up. Instead the Servlet container creates a notification that results in a
+	 * dispatch where Spring MVC invokes exception resolvers and completes
+	 * processing.
 	 * @param object the object to write
 	 * @throws IOException raised when an I/O error occurs
 	 * @throws java.lang.IllegalStateException wraps any other errors
@@ -146,31 +191,26 @@ public class ResponseBodyEmitter {
 	}
 
 	/**
-	 * Write the given object to the response also using a MediaType hint.
-	 * <p>If any exception occurs a dispatch is made back to the app server where
-	 * Spring MVC will pass the exception through its exception handling mechanism.
+	 * Overloaded variant of {@link #send(Object)} that also accepts a MediaType
+	 * hint for how to serialize the given Object.
 	 * @param object the object to write
 	 * @param mediaType a MediaType hint for selecting an HttpMessageConverter
 	 * @throws IOException raised when an I/O error occurs
 	 * @throws java.lang.IllegalStateException wraps any other errors
 	 */
-	public synchronized void send(Object object, MediaType mediaType) throws IOException {
-		Assert.state(!this.complete, "ResponseBodyEmitter is already set complete");
-		sendInternal(object, mediaType);
-	}
-
-	private void sendInternal(Object object, MediaType mediaType) throws IOException {
-		if (object != null) {
+	public void send(Object object, @Nullable MediaType mediaType) throws IOException {
+		this.writeLock.lock();
+		try {
+			Assert.state(!this.complete, () -> "ResponseBodyEmitter has already completed" +
+					(this.failure != null ? " with error: " + this.failure : ""));
 			if (this.handler != null) {
 				try {
 					this.handler.send(object, mediaType);
 				}
 				catch (IOException ex) {
-					completeWithError(ex);
 					throw ex;
 				}
 				catch (Throwable ex) {
-					completeWithError(ex);
 					throw new IllegalStateException("Failed to send " + object, ex);
 				}
 			}
@@ -178,39 +218,128 @@ public class ResponseBodyEmitter {
 				this.earlySendAttempts.add(new DataWithMediaType(object, mediaType));
 			}
 		}
+		finally {
+			this.writeLock.unlock();
+		}
 	}
 
 	/**
-	 * Complete request processing.
-	 * <p>A dispatch is made into the app server where Spring MVC completes
-	 * asynchronous request processing.
+	 * Write a set of data and MediaType pairs in a batch.
+	 * <p>Compared to {@link #send(Object, MediaType)}, this batches the write operations
+	 * and flushes to the network at the end.
+	 * @param items the object and media type pairs to write
+	 * @throws IOException raised when an I/O error occurs
+	 * @throws java.lang.IllegalStateException wraps any other errors
+	 * @since 6.0.12
 	 */
-	public synchronized void complete() {
-		this.complete = true;
+	public void send(Set<DataWithMediaType> items) throws IOException {
+		this.writeLock.lock();
+		try {
+			Assert.state(!this.complete, () -> "ResponseBodyEmitter has already completed" +
+					(this.failure != null ? " with error: " + this.failure : ""));
+			sendInternal(items);
+		}
+		finally {
+			this.writeLock.unlock();
+		}
+	}
+
+	private void sendInternal(Set<DataWithMediaType> items) throws IOException {
+		if (items.isEmpty()) {
+			return;
+		}
 		if (this.handler != null) {
-			this.handler.complete();
+			try {
+				this.handler.send(items);
+			}
+			catch (IOException ex) {
+				throw ex;
+			}
+			catch (Throwable ex) {
+				throw new IllegalStateException("Failed to send " + items, ex);
+			}
+		}
+		else {
+			this.earlySendAttempts.addAll(items);
+		}
+	}
+
+	/**
+	 * Complete request processing by performing a dispatch into the servlet
+	 * container, where Spring MVC is invoked once more, and completes the
+	 * request processing lifecycle.
+	 * <p><strong>Note:</strong> this method should be called by the application
+	 * to complete request processing. It should not be used after container
+	 * related events such as an error while {@link #send(Object) sending}.
+	 */
+	public void complete() {
+		this.writeLock.lock();
+		try {
+			this.complete = true;
+			if (this.handler != null) {
+				this.handler.complete();
+			}
+		}
+		finally {
+			this.writeLock.unlock();
 		}
 	}
 
 	/**
 	 * Complete request processing with an error.
 	 * <p>A dispatch is made into the app server where Spring MVC will pass the
-	 * exception through its exception handling mechanism.
+	 * exception through its exception handling mechanism. Note however that
+	 * at this stage of request processing, the response is committed and the
+	 * response status can no longer be changed.
+	 * <p><strong>Note:</strong> this method should be called by the application
+	 * to complete request processing with an error. It should not be used after
+	 * container related events such as an error while
+	 * {@link #send(Object) sending}.
 	 */
-	public synchronized void completeWithError(Throwable ex) {
-		this.complete = true;
-		this.failure = ex;
-		if (this.handler != null) {
-			this.handler.completeWithError(ex);
+	public void completeWithError(Throwable ex) {
+		this.writeLock.lock();
+		try {
+			this.complete = true;
+			this.failure = ex;
+			if (this.handler != null) {
+				this.handler.completeWithError(ex);
+			}
+		}
+		finally {
+			this.writeLock.unlock();
 		}
 	}
 
 	/**
 	 * Register code to invoke when the async request times out. This method is
 	 * called from a container thread when an async request times out.
+	 * <p>As of 6.2, one can register multiple callbacks for this event.
 	 */
-	public synchronized void onTimeout(Runnable callback) {
-		this.timeoutCallback.setDelegate(callback);
+	public void onTimeout(Runnable callback) {
+		this.writeLock.lock();
+		try {
+			this.timeoutCallback.addDelegate(callback);
+		}
+		finally {
+			this.writeLock.unlock();
+		}
+	}
+
+	/**
+	 * Register code to invoke for an error during async request processing.
+	 * This method is called from a container thread when an error occurred
+	 * while processing an async request.
+	 * <p>As of 6.2, one can register multiple callbacks for this event.
+	 * @since 5.0
+	 */
+	public void onError(Consumer<Throwable> callback) {
+		this.writeLock.lock();
+		try {
+			this.errorCallback.addDelegate(callback);
+		}
+		finally {
+			this.writeLock.unlock();
+		}
 	}
 
 	/**
@@ -218,24 +347,51 @@ public class ResponseBodyEmitter {
 	 * called from a container thread when an async request completed for any
 	 * reason including timeout and network error. This method is useful for
 	 * detecting that a {@code ResponseBodyEmitter} instance is no longer usable.
+	 * <p>As of 6.2, one can register multiple callbacks for this event.
 	 */
-	public synchronized void onCompletion(Runnable callback) {
-		this.completionCallback.setDelegate(callback);
+	public void onCompletion(Runnable callback) {
+		this.writeLock.lock();
+		try {
+			this.completionCallback.addDelegate(callback);
+		}
+		finally {
+			this.writeLock.unlock();
+		}
+	}
+
+
+	@Override
+	public String toString() {
+		return "ResponseBodyEmitter@" + ObjectUtils.getIdentityHexString(this);
 	}
 
 
 	/**
-	 * Handle sent objects and complete request processing.
+	 * Contract to handle the sending of event data, the completion of event
+	 * sending, and the registration of callbacks to be invoked in case of
+	 * timeout, error, and completion for any reason (including from the
+	 * container side).
 	 */
 	interface Handler {
 
-		void send(Object data, MediaType mediaType) throws IOException;
+		/**
+		 * Immediately write and flush the given data to the network.
+		 */
+		void send(Object data, @Nullable MediaType mediaType) throws IOException;
+
+		/**
+		 * Immediately write all data items then flush to the network.
+		 * @since 6.0.12
+		 */
+		void send(Set<DataWithMediaType> items) throws IOException;
 
 		void complete();
 
 		void completeWithError(Throwable failure);
 
 		void onTimeout(Runnable callback);
+
+		void onError(Consumer<Throwable> callback);
 
 		void onCompletion(Runnable callback);
 	}
@@ -249,9 +405,9 @@ public class ResponseBodyEmitter {
 
 		private final Object data;
 
-		private final MediaType mediaType;
+		private final @Nullable MediaType mediaType;
 
-		public DataWithMediaType(Object data, MediaType mediaType) {
+		public DataWithMediaType(Object data, @Nullable MediaType mediaType) {
 			this.data = data;
 			this.mediaType = mediaType;
 		}
@@ -260,7 +416,7 @@ public class ResponseBodyEmitter {
 			return this.data;
 		}
 
-		public MediaType getMediaType() {
+		public @Nullable MediaType getMediaType() {
 			return this.mediaType;
 		}
 	}
@@ -268,17 +424,35 @@ public class ResponseBodyEmitter {
 
 	private class DefaultCallback implements Runnable {
 
-		private Runnable delegate;
+		private List<Runnable> delegates = new ArrayList<>(1);
 
-		public void setDelegate(Runnable delegate) {
-			this.delegate = delegate;
+		public void addDelegate(Runnable delegate) {
+			this.delegates.add(delegate);
 		}
 
 		@Override
 		public void run() {
 			ResponseBodyEmitter.this.complete = true;
-			if (this.delegate != null) {
-				this.delegate.run();
+			for (Runnable delegate : this.delegates) {
+				delegate.run();
+			}
+		}
+	}
+
+
+	private class ErrorCallback implements Consumer<Throwable> {
+
+		private List<Consumer<Throwable>> delegates = new ArrayList<>(1);
+
+		public void addDelegate(Consumer<Throwable> callback) {
+			this.delegates.add(callback);
+		}
+
+		@Override
+		public void accept(Throwable t) {
+			ResponseBodyEmitter.this.complete = true;
+			for(Consumer<Throwable> delegate : this.delegates) {
+				delegate.accept(t);
 			}
 		}
 	}

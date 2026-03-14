@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import org.aopalliance.aop.Advice;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.Advisor;
 import org.springframework.aop.aspectj.AspectJExpressionPointcut;
@@ -38,7 +39,7 @@ import org.springframework.aop.framework.AopConfigException;
 public interface AspectJAdvisorFactory {
 
 	/**
-	 * Determine whether or not the given class is an aspect, as reported
+	 * Determine whether the given class is an aspect, as reported
 	 * by AspectJ's {@link org.aspectj.lang.reflect.AjTypeSystem}.
 	 * <p>Will simply return {@code false} if the supposed aspect is
 	 * invalid (such as an extension of a concrete aspect class).
@@ -46,7 +47,7 @@ public interface AspectJAdvisorFactory {
 	 * such as those with unsupported instantiation models.
 	 * Use the {@link #validate} method to handle these cases if necessary.
 	 * @param clazz the supposed annotation-style AspectJ class
-	 * @return whether or not this class is recognized by AspectJ as an aspect class
+	 * @return whether this class is recognized by AspectJ as an aspect class
 	 */
 	boolean isAspect(Class<?> clazz);
 
@@ -79,7 +80,7 @@ public interface AspectJAdvisorFactory {
 	 * or if it is a pointcut that will be used by other advice but will not
 	 * create a Spring advice in its own right
 	 */
-	Advisor getAdvisor(Method candidateAdviceMethod, MetadataAwareAspectInstanceFactory aspectInstanceFactory,
+	@Nullable Advisor getAdvisor(Method candidateAdviceMethod, MetadataAwareAspectInstanceFactory aspectInstanceFactory,
 			int declarationOrder, String aspectName);
 
 	/**
@@ -98,7 +99,7 @@ public interface AspectJAdvisorFactory {
 	 * @see org.springframework.aop.aspectj.AspectJAfterReturningAdvice
 	 * @see org.springframework.aop.aspectj.AspectJAfterThrowingAdvice
 	 */
-	Advice getAdvice(Method candidateAdviceMethod, AspectJExpressionPointcut expressionPointcut,
+	@Nullable Advice getAdvice(Method candidateAdviceMethod, AspectJExpressionPointcut expressionPointcut,
 			MetadataAwareAspectInstanceFactory aspectInstanceFactory, int declarationOrder, String aspectName);
 
 }

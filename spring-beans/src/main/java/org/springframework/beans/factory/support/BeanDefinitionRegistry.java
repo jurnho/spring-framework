@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -43,7 +43,6 @@ import org.springframework.core.AliasRegistry;
  * @see DefaultListableBeanFactory
  * @see org.springframework.context.support.GenericApplicationContext
  * @see org.springframework.beans.factory.xml.XmlBeanDefinitionReader
- * @see PropertiesBeanDefinitionReader
  */
 public interface BeanDefinitionRegistry extends AliasRegistry {
 
@@ -53,8 +52,9 @@ public interface BeanDefinitionRegistry extends AliasRegistry {
 	 * @param beanName the name of the bean instance to register
 	 * @param beanDefinition definition of the bean instance to register
 	 * @throws BeanDefinitionStoreException if the BeanDefinition is invalid
-	 * or if there is already a BeanDefinition for the specified bean name
-	 * (and we are not allowed to override it)
+	 * @throws BeanDefinitionOverrideException if there is already a BeanDefinition
+	 * for the specified bean name and we are not allowed to override it
+	 * @see GenericBeanDefinition
 	 * @see RootBeanDefinition
 	 * @see ChildBeanDefinition
 	 */
@@ -95,6 +95,19 @@ public interface BeanDefinitionRegistry extends AliasRegistry {
 	 * @return the number of beans defined in the registry
 	 */
 	int getBeanDefinitionCount();
+
+	/**
+	 * Determine whether the bean definition for the given name is overridable,
+	 * i.e. whether {@link #registerBeanDefinition} would successfully return
+	 * against an existing definition of the same name.
+	 * <p>The default implementation returns {@code true}.
+	 * @param beanName the name to check
+	 * @return whether the definition for the given bean name is overridable
+	 * @since 6.1
+	 */
+	default boolean isBeanDefinitionOverridable(String beanName) {
+		return true;
+	}
 
 	/**
 	 * Determine whether the given bean name is already in use within this registry,

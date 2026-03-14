@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,9 +19,13 @@ package org.springframework.aop.framework;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.aop.Advisor;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.beans.factory.config.SmartInstantiationAwareBeanPostProcessor;
+import org.springframework.core.SmartClassLoader;
 
 /**
  * Base class for {@link BeanPostProcessor} implementations that apply a
@@ -31,13 +35,14 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
  * @since 3.2
  */
 @SuppressWarnings("serial")
-public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSupport implements BeanPostProcessor {
+public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSupport
+		implements SmartInstantiationAwareBeanPostProcessor {
 
-	protected Advisor advisor;
+	protected @Nullable Advisor advisor;
 
 	protected boolean beforeExistingAdvisors = false;
 
-	private final Map<Class<?>, Boolean> eligibleBeans = new ConcurrentHashMap<Class<?>, Boolean>(256);
+	private final Map<Class<?>, Boolean> eligibleBeans = new ConcurrentHashMap<>(256);
 
 
 	/**
@@ -55,23 +60,48 @@ public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSu
 
 
 	@Override
-	public Object postProcessBeforeInitialization(Object bean, String beanName) {
-		return bean;
+	public Class<?> determineBeanType(Class<?> beanClass, String beanName) {
+		if (this.advisor != null && isEligible(beanClass)) {
+			ProxyFactory proxyFactory = new ProxyFactory();
+			proxyFactory.copyFrom(this);
+			proxyFactory.setTargetClass(beanClass);
+
+			if (!proxyFactory.isProxyTargetClass()) {
+				evaluateProxyInterfaces(beanClass, proxyFactory);
+			}
+			proxyFactory.addAdvisor(this.advisor);
+			customizeProxyFactory(proxyFactory);
+
+			// Use original ClassLoader if bean class not locally loaded in overriding class loader
+			ClassLoader classLoader = getProxyClassLoader();
+			if (classLoader instanceof SmartClassLoader smartClassLoader &&
+					classLoader != beanClass.getClassLoader()) {
+				classLoader = smartClassLoader.getOriginalClassLoader();
+			}
+			return proxyFactory.getProxyClass(classLoader);
+		}
+
+		return beanClass;
 	}
 
 	@Override
 	public Object postProcessAfterInitialization(Object bean, String beanName) {
-		if (bean instanceof AopInfrastructureBean) {
+		if (this.advisor == null || bean instanceof AopInfrastructureBean) {
 			// Ignore AOP infrastructure such as scoped proxies.
 			return bean;
 		}
 
-		if (bean instanceof Advised) {
-			Advised advised = (Advised) bean;
+		if (bean instanceof Advised advised) {
 			if (!advised.isFrozen() && isEligible(AopUtils.getTargetClass(bean))) {
-				// Add our local Advisor to the existing proxy's Advisor chain...
+				// Add our local Advisor to the existing proxy's Advisor chain.
 				if (this.beforeExistingAdvisors) {
 					advised.addAdvisor(0, this.advisor);
+				}
+				else if (advised.getTargetSource() == AdvisedSupport.EMPTY_TARGET_SOURCE &&
+						advised.getAdvisorCount() > 0) {
+					// No target, leave last Advisor in place and add new Advisor right before.
+					advised.addAdvisor(advised.getAdvisorCount() - 1, this.advisor);
+					return bean;
 				}
 				else {
 					advised.addAdvisor(this.advisor);
@@ -82,15 +112,24 @@ public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSu
 
 		if (isEligible(bean, beanName)) {
 			ProxyFactory proxyFactory = prepareProxyFactory(bean, beanName);
-			if (!proxyFactory.isProxyTargetClass()) {
+			if (!proxyFactory.isProxyTargetClass() && !proxyFactory.hasUserSuppliedInterfaces()) {
 				evaluateProxyInterfaces(bean.getClass(), proxyFactory);
 			}
 			proxyFactory.addAdvisor(this.advisor);
 			customizeProxyFactory(proxyFactory);
-			return proxyFactory.getProxy(getProxyClassLoader());
+			proxyFactory.setFrozen(isFrozen());
+			proxyFactory.setPreFiltered(true);
+
+			// Use original ClassLoader if bean class not locally loaded in overriding class loader
+			ClassLoader classLoader = getProxyClassLoader();
+			if (classLoader instanceof SmartClassLoader smartClassLoader &&
+					classLoader != bean.getClass().getClassLoader()) {
+				classLoader = smartClassLoader.getOriginalClassLoader();
+			}
+			return proxyFactory.getProxy(classLoader);
 		}
 
-		// No async proxy needed.
+		// No proxy needed.
 		return bean;
 	}
 
@@ -98,7 +137,7 @@ public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSu
 	 * Check whether the given bean is eligible for advising with this
 	 * post-processor's {@link Advisor}.
 	 * <p>Delegates to {@link #isEligible(Class)} for target class checking.
-	 * Can be overridden e.g. to specifically exclude certain beans by name.
+	 * Can be overridden, for example, to specifically exclude certain beans by name.
 	 * <p>Note: Only called for regular bean instances but not for existing
 	 * proxy instances which implement {@link Advised} and allow for adding
 	 * the local {@link Advisor} to the existing proxy's {@link Advisor} chain.
@@ -125,6 +164,9 @@ public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSu
 		if (eligible != null) {
 			return eligible;
 		}
+		if (this.advisor == null) {
+			return false;
+		}
 		eligible = AopUtils.canApply(this.advisor, targetClass);
 		this.eligibleBeans.put(targetClass, eligible);
 		return eligible;
@@ -147,6 +189,7 @@ public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSu
 	protected ProxyFactory prepareProxyFactory(Object bean, String beanName) {
 		ProxyFactory proxyFactory = new ProxyFactory();
 		proxyFactory.copyFrom(this);
+		proxyFactory.setFrozen(false);
 		proxyFactory.setTarget(bean);
 		return proxyFactory;
 	}
@@ -155,7 +198,7 @@ public abstract class AbstractAdvisingBeanPostProcessor extends ProxyProcessorSu
 	 * Subclasses may choose to implement this: for example,
 	 * to change the interfaces exposed.
 	 * <p>The default implementation is empty.
-	 * @param proxyFactory ProxyFactory that is already configured with
+	 * @param proxyFactory the ProxyFactory that is already configured with
 	 * target, advisor and interfaces and will be used to create the proxy
 	 * immediately after this method returns
 	 * @since 4.2.3

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,8 @@ package org.springframework.beans.support;
 
 import java.io.Serializable;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.util.StringUtils;
 
 /**
@@ -28,8 +30,11 @@ import org.springframework.util.StringUtils;
  * @author Jean-Pierre Pawlak
  * @since 26.05.2003
  * @see #setToggleAscendingOnProperty
+ * @deprecated as severely outdated and superseded by more modern solutions,
+ * for example in Spring Data Commons
  */
-@SuppressWarnings("serial")
+@Deprecated(since = "7.0.3", forRemoval = true)
+@SuppressWarnings({"removal", "serial"})
 public class MutableSortDefinition implements SortDefinition, Serializable {
 
 	private String property = "";
@@ -154,17 +159,11 @@ public class MutableSortDefinition implements SortDefinition, Serializable {
 
 
 	@Override
-	public boolean equals(Object other) {
-		if (this == other) {
-			return true;
-		}
-		if (!(other instanceof SortDefinition)) {
-			return false;
-		}
-		SortDefinition otherSd = (SortDefinition) other;
-		return (getProperty().equals(otherSd.getProperty()) &&
-				isAscending() == otherSd.isAscending() &&
-				isIgnoreCase() == otherSd.isIgnoreCase());
+	public boolean equals(@Nullable Object other) {
+		return (this == other || (other instanceof SortDefinition that &&
+				getProperty().equals(that.getProperty()) &&
+				isAscending() == that.isAscending() &&
+				isIgnoreCase() == that.isIgnoreCase()));
 	}
 
 	@Override

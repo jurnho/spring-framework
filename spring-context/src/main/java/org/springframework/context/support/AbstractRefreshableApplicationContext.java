@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.context.support;
 
 import java.io.IOException;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -63,15 +65,12 @@ import org.springframework.context.ApplicationContextException;
  */
 public abstract class AbstractRefreshableApplicationContext extends AbstractApplicationContext {
 
-	private Boolean allowBeanDefinitionOverriding;
+	private @Nullable Boolean allowBeanDefinitionOverriding;
 
-	private Boolean allowCircularReferences;
+	private @Nullable Boolean allowCircularReferences;
 
-	/** Bean factory for this context */
-	private DefaultListableBeanFactory beanFactory;
-
-	/** Synchronization monitor for the internal BeanFactory */
-	private final Object beanFactoryMonitor = new Object();
+	/** Bean factory for this context. */
+	private volatile @Nullable DefaultListableBeanFactory beanFactory;
 
 
 	/**
@@ -84,7 +83,7 @@ public abstract class AbstractRefreshableApplicationContext extends AbstractAppl
 	 * Create a new AbstractRefreshableApplicationContext with the given parent context.
 	 * @param parent the parent context
 	 */
-	public AbstractRefreshableApplicationContext(ApplicationContext parent) {
+	public AbstractRefreshableApplicationContext(@Nullable ApplicationContext parent) {
 		super(parent);
 	}
 
@@ -125,11 +124,10 @@ public abstract class AbstractRefreshableApplicationContext extends AbstractAppl
 		try {
 			DefaultListableBeanFactory beanFactory = createBeanFactory();
 			beanFactory.setSerializationId(getId());
+			beanFactory.setApplicationStartup(getApplicationStartup());
 			customizeBeanFactory(beanFactory);
 			loadBeanDefinitions(beanFactory);
-			synchronized (this.beanFactoryMonitor) {
-				this.beanFactory = beanFactory;
-			}
+			this.beanFactory = beanFactory;
 		}
 		catch (IOException ex) {
 			throw new ApplicationContextException("I/O error parsing bean definition source for " + getDisplayName(), ex);
@@ -137,18 +135,19 @@ public abstract class AbstractRefreshableApplicationContext extends AbstractAppl
 	}
 
 	@Override
-	protected void cancelRefresh(BeansException ex) {
-		synchronized (this.beanFactoryMonitor) {
-			if (this.beanFactory != null)
-				this.beanFactory.setSerializationId(null);
+	protected void cancelRefresh(Throwable ex) {
+		DefaultListableBeanFactory beanFactory = this.beanFactory;
+		if (beanFactory != null) {
+			beanFactory.setSerializationId(null);
 		}
 		super.cancelRefresh(ex);
 	}
 
 	@Override
 	protected final void closeBeanFactory() {
-		synchronized (this.beanFactoryMonitor) {
-			this.beanFactory.setSerializationId(null);
+		DefaultListableBeanFactory beanFactory = this.beanFactory;
+		if (beanFactory != null) {
+			beanFactory.setSerializationId(null);
 			this.beanFactory = null;
 		}
 	}
@@ -158,20 +157,17 @@ public abstract class AbstractRefreshableApplicationContext extends AbstractAppl
 	 * i.e. has been refreshed at least once and not been closed yet.
 	 */
 	protected final boolean hasBeanFactory() {
-		synchronized (this.beanFactoryMonitor) {
-			return (this.beanFactory != null);
-		}
+		return (this.beanFactory != null);
 	}
 
 	@Override
 	public final ConfigurableListableBeanFactory getBeanFactory() {
-		synchronized (this.beanFactoryMonitor) {
-			if (this.beanFactory == null) {
-				throw new IllegalStateException("BeanFactory not initialized or already closed - " +
-						"call 'refresh' before accessing beans via the ApplicationContext");
-			}
-			return this.beanFactory;
+		DefaultListableBeanFactory beanFactory = this.beanFactory;
+		if (beanFactory == null) {
+			throw new IllegalStateException("BeanFactory not initialized or already closed - " +
+					"call 'refresh' before accessing beans via the ApplicationContext");
 		}
+		return beanFactory;
 	}
 
 	/**
@@ -229,7 +225,6 @@ public abstract class AbstractRefreshableApplicationContext extends AbstractAppl
 	 * @param beanFactory the bean factory to load bean definitions into
 	 * @throws BeansException if parsing of the bean definitions failed
 	 * @throws IOException if loading of bean definition files failed
-	 * @see org.springframework.beans.factory.support.PropertiesBeanDefinitionReader
 	 * @see org.springframework.beans.factory.xml.XmlBeanDefinitionReader
 	 */
 	protected abstract void loadBeanDefinitions(DefaultListableBeanFactory beanFactory)

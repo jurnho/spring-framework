@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,13 +16,15 @@
 
 package org.springframework.aop.config;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.aop.aspectj.AspectInstanceFactory;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.core.Ordered;
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
-import org.springframework.util.StringUtils;
 
 /**
  * Implementation of {@link AspectInstanceFactory} that locates the aspect from the
@@ -34,9 +36,9 @@ import org.springframework.util.StringUtils;
  */
 public class SimpleBeanFactoryAwareAspectInstanceFactory implements AspectInstanceFactory, BeanFactoryAware {
 
-	private String aspectBeanName;
+	private @Nullable String aspectBeanName;
 
-	private BeanFactory beanFactory;
+	private @Nullable BeanFactory beanFactory;
 
 
 	/**
@@ -50,25 +52,25 @@ public class SimpleBeanFactoryAwareAspectInstanceFactory implements AspectInstan
 	@Override
 	public void setBeanFactory(BeanFactory beanFactory) {
 		this.beanFactory = beanFactory;
-		if (!StringUtils.hasText(this.aspectBeanName)) {
-			throw new IllegalArgumentException("'aspectBeanName' is required");
-		}
+		Assert.notNull(this.aspectBeanName, "'aspectBeanName' is required");
 	}
 
 
 	/**
-	 * Look up the aspect bean from the {@link BeanFactory} and returns it.
+	 * Look up the aspect bean from the {@link BeanFactory} and return it.
 	 * @see #setAspectBeanName
 	 */
 	@Override
 	public Object getAspectInstance() {
+		Assert.state(this.beanFactory != null, "No BeanFactory set");
+		Assert.state(this.aspectBeanName != null, "No 'aspectBeanName' set");
 		return this.beanFactory.getBean(this.aspectBeanName);
 	}
 
 	@Override
-	public ClassLoader getAspectClassLoader() {
-		if (this.beanFactory instanceof ConfigurableBeanFactory) {
-			return ((ConfigurableBeanFactory) this.beanFactory).getBeanClassLoader();
+	public @Nullable ClassLoader getAspectClassLoader() {
+		if (this.beanFactory instanceof ConfigurableBeanFactory cbf) {
+			return cbf.getBeanClassLoader();
 		}
 		else {
 			return ClassUtils.getDefaultClassLoader();
@@ -77,7 +79,8 @@ public class SimpleBeanFactoryAwareAspectInstanceFactory implements AspectInstan
 
 	@Override
 	public int getOrder() {
-		if (this.beanFactory.isSingleton(this.aspectBeanName) &&
+		if (this.beanFactory != null && this.aspectBeanName != null &&
+				this.beanFactory.isSingleton(this.aspectBeanName) &&
 				this.beanFactory.isTypeMatch(this.aspectBeanName, Ordered.class)) {
 			return ((Ordered) this.beanFactory.getBean(this.aspectBeanName)).getOrder();
 		}

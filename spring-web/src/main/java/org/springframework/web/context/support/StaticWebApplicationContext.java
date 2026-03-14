@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,17 +16,16 @@
 
 package org.springframework.web.context.support;
 
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletContext;
+import jakarta.servlet.ServletConfig;
+import jakarta.servlet.ServletContext;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.support.StaticApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternResolver;
-import org.springframework.ui.context.Theme;
-import org.springframework.ui.context.ThemeSource;
-import org.springframework.ui.context.support.UiApplicationContextUtils;
+import org.springframework.util.Assert;
 import org.springframework.web.context.ConfigurableWebApplicationContext;
 import org.springframework.web.context.ServletConfigAware;
 import org.springframework.web.context.ServletContextAware;
@@ -40,29 +39,21 @@ import org.springframework.web.context.ServletContextAware;
  * despite not actually supporting external configuration files.
  *
  * <p>Interprets resource paths as servlet context resources, i.e. as paths beneath
- * the web application root. Absolute paths, e.g. for files outside the web app root,
+ * the web application root. Absolute paths, for example, for files outside the web app root,
  * can be accessed via "file:" URLs, as implemented by
  * {@link org.springframework.core.io.DefaultResourceLoader}.
  *
- * <p>In addition to the special beans detected by
- * {@link org.springframework.context.support.AbstractApplicationContext},
- * this class detects a bean of type {@link org.springframework.ui.context.ThemeSource}
- * in the context, under the special bean name "themeSource".
- *
  * @author Rod Johnson
  * @author Juergen Hoeller
- * @see org.springframework.ui.context.ThemeSource
  */
 public class StaticWebApplicationContext extends StaticApplicationContext
-		implements ConfigurableWebApplicationContext, ThemeSource {
+		implements ConfigurableWebApplicationContext {
 
-	private ServletContext servletContext;
+	private @Nullable ServletContext servletContext;
 
-	private ServletConfig servletConfig;
+	private @Nullable ServletConfig servletConfig;
 
-	private String namespace;
-
-	private ThemeSource themeSource;
+	private @Nullable String namespace;
 
 
 	public StaticWebApplicationContext() {
@@ -74,17 +65,17 @@ public class StaticWebApplicationContext extends StaticApplicationContext
 	 * Set the ServletContext that this WebApplicationContext runs in.
 	 */
 	@Override
-	public void setServletContext(ServletContext servletContext) {
+	public void setServletContext(@Nullable ServletContext servletContext) {
 		this.servletContext = servletContext;
 	}
 
 	@Override
-	public ServletContext getServletContext() {
+	public @Nullable ServletContext getServletContext() {
 		return this.servletContext;
 	}
 
 	@Override
-	public void setServletConfig(ServletConfig servletConfig) {
+	public void setServletConfig(@Nullable ServletConfig servletConfig) {
 		this.servletConfig = servletConfig;
 		if (servletConfig != null && this.servletContext == null) {
 			this.servletContext = servletConfig.getServletContext();
@@ -92,12 +83,12 @@ public class StaticWebApplicationContext extends StaticApplicationContext
 	}
 
 	@Override
-	public ServletConfig getServletConfig() {
+	public @Nullable ServletConfig getServletConfig() {
 		return this.servletConfig;
 	}
 
 	@Override
-	public void setNamespace(String namespace) {
+	public void setNamespace(@Nullable String namespace) {
 		this.namespace = namespace;
 		if (namespace != null) {
 			setDisplayName("WebApplicationContext for namespace '" + namespace + "'");
@@ -105,7 +96,7 @@ public class StaticWebApplicationContext extends StaticApplicationContext
 	}
 
 	@Override
-	public String getNamespace() {
+	public @Nullable String getNamespace() {
 		return this.namespace;
 	}
 
@@ -115,9 +106,7 @@ public class StaticWebApplicationContext extends StaticApplicationContext
 	 */
 	@Override
 	public void setConfigLocation(String configLocation) {
-		if (configLocation != null) {
-			throw new UnsupportedOperationException("StaticWebApplicationContext does not support config locations");
-		}
+		throw new UnsupportedOperationException("StaticWebApplicationContext does not support config locations");
 	}
 
 	/**
@@ -126,13 +115,11 @@ public class StaticWebApplicationContext extends StaticApplicationContext
 	 */
 	@Override
 	public void setConfigLocations(String... configLocations) {
-		if (configLocations != null) {
-			throw new UnsupportedOperationException("StaticWebApplicationContext does not support config locations");
-		}
+		throw new UnsupportedOperationException("StaticWebApplicationContext does not support config locations");
 	}
 
 	@Override
-	public String[] getConfigLocations() {
+	public String @Nullable [] getConfigLocations() {
 		return null;
 	}
 
@@ -156,6 +143,7 @@ public class StaticWebApplicationContext extends StaticApplicationContext
 	 */
 	@Override
 	protected Resource getResourceByPath(String path) {
+		Assert.state(this.servletContext != null, "No ServletContext available");
 		return new ServletContextResource(this.servletContext, path);
 	}
 
@@ -176,23 +164,10 @@ public class StaticWebApplicationContext extends StaticApplicationContext
 		return new StandardServletEnvironment();
 	}
 
-	/**
-	 * Initialize the theme capability.
-	 */
-	@Override
-	protected void onRefresh() {
-		this.themeSource = UiApplicationContextUtils.initThemeSource(this);
-	}
-
 	@Override
 	protected void initPropertySources() {
 		WebApplicationContextUtils.initServletPropertySources(getEnvironment().getPropertySources(),
 				this.servletContext, this.servletConfig);
-	}
-
-	@Override
-	public Theme getTheme(String themeName) {
-		return this.themeSource.getTheme(themeName);
 	}
 
 }

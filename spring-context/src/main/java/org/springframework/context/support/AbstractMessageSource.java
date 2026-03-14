@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.context.HierarchicalMessageSource;
 import org.springframework.context.MessageSource;
@@ -63,37 +65,37 @@ import org.springframework.util.ObjectUtils;
  */
 public abstract class AbstractMessageSource extends MessageSourceSupport implements HierarchicalMessageSource {
 
-	private MessageSource parentMessageSource;
+	private @Nullable MessageSource parentMessageSource;
 
-	private Properties commonMessages;
+	private @Nullable Properties commonMessages;
 
 	private boolean useCodeAsDefaultMessage = false;
 
 
 	@Override
-	public void setParentMessageSource(MessageSource parent) {
+	public void setParentMessageSource(@Nullable MessageSource parent) {
 		this.parentMessageSource = parent;
 	}
 
 	@Override
-	public MessageSource getParentMessageSource() {
+	public @Nullable MessageSource getParentMessageSource() {
 		return this.parentMessageSource;
 	}
 
 	/**
 	 * Specify locale-independent common messages, with the message code as key
 	 * and the full message String (may contain argument placeholders) as value.
-	 * <p>May also link to an externally defined Properties object, e.g. defined
+	 * <p>May also link to an externally defined Properties object, for example, defined
 	 * through a {@link org.springframework.beans.factory.config.PropertiesFactoryBean}.
 	 */
-	public void setCommonMessages(Properties commonMessages) {
+	public void setCommonMessages(@Nullable Properties commonMessages) {
 		this.commonMessages = commonMessages;
 	}
 
 	/**
 	 * Return a Properties object defining locale-independent common messages, if any.
 	 */
-	protected Properties getCommonMessages() {
+	protected @Nullable Properties getCommonMessages() {
 		return this.commonMessages;
 	}
 
@@ -132,22 +134,19 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 
 
 	@Override
-	public final String getMessage(String code, Object[] args, String defaultMessage, Locale locale) {
+	public final @Nullable String getMessage(String code, Object @Nullable [] args, @Nullable String defaultMessage, @Nullable Locale locale) {
 		String msg = getMessageInternal(code, args, locale);
 		if (msg != null) {
 			return msg;
 		}
 		if (defaultMessage == null) {
-			String fallback = getDefaultMessage(code);
-			if (fallback != null) {
-				return fallback;
-			}
+			return getDefaultMessage(code);
 		}
 		return renderDefaultMessage(defaultMessage, args, locale);
 	}
 
 	@Override
-	public final String getMessage(String code, Object[] args, Locale locale) throws NoSuchMessageException {
+	public final String getMessage(String code, Object @Nullable [] args, @Nullable Locale locale) throws NoSuchMessageException {
 		String msg = getMessageInternal(code, args, locale);
 		if (msg != null) {
 			return msg;
@@ -156,34 +155,36 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 		if (fallback != null) {
 			return fallback;
 		}
-		throw new NoSuchMessageException(code, locale);
+		if (locale == null ) {
+			throw new NoSuchMessageException(code);
+		}
+		else {
+			throw new NoSuchMessageException(code, locale);
+		}
 	}
 
 	@Override
-	public final String getMessage(MessageSourceResolvable resolvable, Locale locale)
-			throws NoSuchMessageException {
-
+	public final String getMessage(MessageSourceResolvable resolvable, @Nullable Locale locale) throws NoSuchMessageException {
 		String[] codes = resolvable.getCodes();
-		if (codes == null) {
-			codes = new String[0];
-		}
-		for (String code : codes) {
-			String msg = getMessageInternal(code, resolvable.getArguments(), locale);
-			if (msg != null) {
-				return msg;
+		if (codes != null) {
+			for (String code : codes) {
+				String message = getMessageInternal(code, resolvable.getArguments(), locale);
+				if (message != null) {
+					return message;
+				}
 			}
 		}
-		String defaultMessage = resolvable.getDefaultMessage();
+		String defaultMessage = getDefaultMessage(resolvable, locale);
 		if (defaultMessage != null) {
-			return renderDefaultMessage(defaultMessage, resolvable.getArguments(), locale);
+			return defaultMessage;
 		}
-		if (codes.length > 0) {
-			String fallback = getDefaultMessage(codes[0]);
-			if (fallback != null) {
-				return fallback;
-			}
+		String code = !ObjectUtils.isEmpty(codes) ? codes[codes.length - 1] : "";
+		if (locale == null ) {
+			throw new NoSuchMessageException(code);
 		}
-		throw new NoSuchMessageException(codes.length > 0 ? codes[codes.length - 1] : null, locale);
+		else {
+			throw new NoSuchMessageException(code, locale);
+		}
 	}
 
 
@@ -194,14 +195,14 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 	 * @param code the code to lookup up, such as 'calculator.noRateSet'
 	 * @param args array of arguments that will be filled in for params
 	 * within the message
-	 * @param locale the Locale in which to do the lookup
+	 * @param locale the locale in which to do the lookup
 	 * @return the resolved message, or {@code null} if not found
 	 * @see #getMessage(String, Object[], String, Locale)
 	 * @see #getMessage(String, Object[], Locale)
 	 * @see #getMessage(MessageSourceResolvable, Locale)
 	 * @see #setUseCodeAsDefaultMessage
 	 */
-	protected String getMessageInternal(String code, Object[] args, Locale locale) {
+	protected @Nullable String getMessageInternal(@Nullable String code, Object @Nullable [] args, @Nullable Locale locale) {
 		if (code == null) {
 			return null;
 		}
@@ -249,24 +250,25 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 	}
 
 	/**
-	 * Try to retrieve the given message from the parent MessageSource, if any.
+	 * Try to retrieve the given message from the parent {@code MessageSource}, if any.
 	 * @param code the code to lookup up, such as 'calculator.noRateSet'
 	 * @param args array of arguments that will be filled in for params
 	 * within the message
-	 * @param locale the Locale in which to do the lookup
+	 * @param locale the locale in which to do the lookup
 	 * @return the resolved message, or {@code null} if not found
 	 * @see #getParentMessageSource()
 	 */
-	protected String getMessageFromParent(String code, Object[] args, Locale locale) {
+	protected @Nullable String getMessageFromParent(String code, Object @Nullable [] args, Locale locale) {
 		MessageSource parent = getParentMessageSource();
 		if (parent != null) {
-			if (parent instanceof AbstractMessageSource) {
+			if (parent instanceof AbstractMessageSource abstractMessageSource) {
 				// Call internal method to avoid getting the default code back
 				// in case of "useCodeAsDefaultMessage" being activated.
-				return ((AbstractMessageSource) parent).getMessageInternal(code, args, locale);
+				return abstractMessageSource.getMessageInternal(code, args, locale);
 			}
 			else {
 				// Check parent MessageSource, returning null if not found there.
+				// Covers custom MessageSource impls and DelegatingMessageSource.
 				return parent.getMessage(code, args, null, locale);
 			}
 		}
@@ -275,16 +277,47 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 	}
 
 	/**
+	 * Get a default message for the given {@code MessageSourceResolvable}.
+	 * <p>This implementation fully renders the default message if available,
+	 * or just returns the plain default message {@code String} if the primary
+	 * message code is being used as a default message.
+	 * @param resolvable the value object to resolve a default message for
+	 * @param locale the current locale
+	 * @return the default message, or {@code null} if none
+	 * @since 4.3.6
+	 * @see #renderDefaultMessage(String, Object[], Locale)
+	 * @see #getDefaultMessage(String)
+	 */
+	protected @Nullable String getDefaultMessage(MessageSourceResolvable resolvable, @Nullable Locale locale) {
+		String defaultMessage = resolvable.getDefaultMessage();
+		String[] codes = resolvable.getCodes();
+		if (defaultMessage != null) {
+			if (resolvable instanceof DefaultMessageSourceResolvable defaultMessageSourceResolvable &&
+					!defaultMessageSourceResolvable.shouldRenderDefaultMessage()) {
+				// Given default message does not contain any argument placeholders
+				// (and isn't escaped for alwaysUseMessageFormat either) -> return as-is.
+				return defaultMessage;
+			}
+			if (!ObjectUtils.isEmpty(codes) && defaultMessage.equals(codes[0])) {
+				// Never format a code-as-default-message, even with alwaysUseMessageFormat=true
+				return defaultMessage;
+			}
+			return renderDefaultMessage(defaultMessage, resolvable.getArguments(), locale);
+		}
+		return (!ObjectUtils.isEmpty(codes) ? getDefaultMessage(codes[0]) : null);
+	}
+
+	/**
 	 * Return a fallback default message for the given code, if any.
 	 * <p>Default is to return the code itself if "useCodeAsDefaultMessage" is activated,
 	 * or return no fallback else. In case of no fallback, the caller will usually
-	 * receive a NoSuchMessageException from {@code getMessage}.
+	 * receive a {@code NoSuchMessageException} from {@code getMessage}.
 	 * @param code the message code that we couldn't resolve
 	 * and that we didn't receive an explicit default message for
 	 * @return the default message to use, or {@code null} if none
 	 * @see #setUseCodeAsDefaultMessage
 	 */
-	protected String getDefaultMessage(String code) {
+	protected @Nullable String getDefaultMessage(String code) {
 		if (isUseCodeAsDefaultMessage()) {
 			return code;
 		}
@@ -301,20 +334,20 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 	 * @return an array of arguments with any MessageSourceResolvables resolved
 	 */
 	@Override
-	protected Object[] resolveArguments(Object[] args, Locale locale) {
-		if (args == null) {
-			return new Object[0];
+	protected Object[] resolveArguments(Object @Nullable [] args, @Nullable Locale locale) {
+		if (ObjectUtils.isEmpty(args)) {
+			return super.resolveArguments(args, locale);
 		}
-		List<Object> resolvedArgs = new ArrayList<Object>(args.length);
+		List<Object> resolvedArgs = new ArrayList<>(args.length);
 		for (Object arg : args) {
-			if (arg instanceof MessageSourceResolvable) {
-				resolvedArgs.add(getMessage((MessageSourceResolvable) arg, locale));
+			if (arg instanceof MessageSourceResolvable messageSourceResolvable) {
+				resolvedArgs.add(getMessage(messageSourceResolvable, locale));
 			}
 			else {
 				resolvedArgs.add(arg);
 			}
 		}
-		return resolvedArgs.toArray(new Object[resolvedArgs.size()]);
+		return resolvedArgs.toArray();
 	}
 
 	/**
@@ -328,13 +361,13 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 	 * pattern doesn't contain argument placeholders in the first place. Therefore,
 	 * it is advisable to circumvent MessageFormat for messages without arguments.
 	 * @param code the code of the message to resolve
-	 * @param locale the Locale to resolve the code for
+	 * @param locale the locale to resolve the code for
 	 * (subclasses are encouraged to support internationalization)
 	 * @return the message String, or {@code null} if not found
 	 * @see #resolveCode
 	 * @see java.text.MessageFormat
 	 */
-	protected String resolveCodeWithoutArguments(String code, Locale locale) {
+	protected @Nullable String resolveCodeWithoutArguments(String code, Locale locale) {
 		MessageFormat messageFormat = resolveCode(code, locale);
 		if (messageFormat != null) {
 			synchronized (messageFormat) {
@@ -352,11 +385,11 @@ public abstract class AbstractMessageSource extends MessageSourceSupport impleme
 	 * for messages without arguments, not involving MessageFormat.</b>
 	 * See the {@link #resolveCodeWithoutArguments} javadoc for details.
 	 * @param code the code of the message to resolve
-	 * @param locale the Locale to resolve the code for
+	 * @param locale the locale to resolve the code for
 	 * (subclasses are encouraged to support internationalization)
 	 * @return the MessageFormat for the message, or {@code null} if not found
 	 * @see #resolveCodeWithoutArguments(String, java.util.Locale)
 	 */
-	protected abstract MessageFormat resolveCode(String code, Locale locale);
+	protected abstract @Nullable MessageFormat resolveCode(String code, Locale locale);
 
 }

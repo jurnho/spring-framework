@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,69 +16,78 @@
 
 package org.springframework.mock.web;
 
-import javax.servlet.SessionCookieConfig;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import jakarta.servlet.SessionCookieConfig;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Mock implementation of the {@link javax.servlet.SessionCookieConfig} interface.
+ * Mock implementation of the {@link jakarta.servlet.SessionCookieConfig} interface.
  *
  * @author Juergen Hoeller
  * @since 4.0
- * @see javax.servlet.ServletContext#getSessionCookieConfig()
+ * @see jakarta.servlet.ServletContext#getSessionCookieConfig()
  */
 public class MockSessionCookieConfig implements SessionCookieConfig {
 
-	private String name;
+	private @Nullable String name;
 
-	private String domain;
+	private @Nullable String domain;
 
-	private String path;
+	private @Nullable String path;
 
-	private String comment;
+	private @Nullable String comment;
 
 	private boolean httpOnly;
 
 	private boolean secure;
 
-	private int maxAge;
+	private int maxAge = -1;
+
+	private Map<String, String> attributes = new LinkedHashMap<>();
 
 
 	@Override
-	public void setName(String name) {
+	public void setName(@Nullable String name) {
 		this.name = name;
 	}
 
 	@Override
-	public String getName() {
+	public @Nullable String getName() {
 		return this.name;
 	}
 
 	@Override
-	public void setDomain(String domain) {
+	public void setDomain(@Nullable String domain) {
 		this.domain = domain;
 	}
 
 	@Override
-	public String getDomain() {
+	public @Nullable String getDomain() {
 		return this.domain;
 	}
 
 	@Override
-	public void setPath(String path) {
+	public void setPath(@Nullable String path) {
 		this.path = path;
 	}
 
 	@Override
-	public String getPath() {
+	public @Nullable String getPath() {
 		return this.path;
 	}
 
+	@SuppressWarnings("removal")
 	@Override
-	public void setComment(String comment) {
+	public void setComment(@Nullable String comment) {
 		this.comment = comment;
 	}
 
+	@SuppressWarnings("removal")
 	@Override
-	public String getComment() {
+	public @Nullable String getComment() {
 		return this.comment;
 	}
 
@@ -110,6 +119,21 @@ public class MockSessionCookieConfig implements SessionCookieConfig {
 	@Override
 	public int getMaxAge() {
 		return this.maxAge;
+	}
+
+	@Override
+	public void setAttribute(String name, String value) {
+		this.attributes.put(name, value);
+	}
+
+	@Override
+	public @Nullable String getAttribute(String name) {
+		return this.attributes.get(name);
+	}
+
+	@Override
+	public Map<String, String> getAttributes() {
+		return Collections.unmodifiableMap(this.attributes);
 	}
 
 }

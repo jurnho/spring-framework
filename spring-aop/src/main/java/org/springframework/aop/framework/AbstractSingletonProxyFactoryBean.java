@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.aop.framework;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.TargetSource;
 import org.springframework.aop.framework.adapter.AdvisorAdapterRegistry;
@@ -41,20 +43,20 @@ import org.springframework.util.ClassUtils;
 public abstract class AbstractSingletonProxyFactoryBean extends ProxyConfig
 		implements FactoryBean<Object>, BeanClassLoaderAware, InitializingBean {
 
-	private Object target;
+	private @Nullable Object target;
 
-	private Class<?>[] proxyInterfaces;
+	private Class<?> @Nullable [] proxyInterfaces;
 
-	private Object[] preInterceptors;
+	private Object @Nullable [] preInterceptors;
 
-	private Object[] postInterceptors;
+	private Object @Nullable [] postInterceptors;
 
-	/** Default is global AdvisorAdapterRegistry */
+	/** Default is global AdvisorAdapterRegistry. */
 	private AdvisorAdapterRegistry advisorAdapterRegistry = GlobalAdvisorAdapterRegistry.getInstance();
 
-	private transient ClassLoader proxyClassLoader;
+	private transient @Nullable ClassLoader proxyClassLoader;
 
-	private Object proxy;
+	private @Nullable Object proxy;
 
 
 	/**
@@ -84,7 +86,7 @@ public abstract class AbstractSingletonProxyFactoryBean extends ProxyConfig
 
 	/**
 	 * Set additional interceptors (or advisors) to be applied before the
-	 * implicit transaction interceptor, e.g. a PerformanceMonitorInterceptor.
+	 * implicit transaction interceptor, for example, a PerformanceMonitorInterceptor.
 	 * <p>You may specify any AOP Alliance MethodInterceptors or other
 	 * Spring AOP Advices, as well as Spring AOP Advisors.
 	 * @see org.springframework.aop.interceptor.PerformanceMonitorInterceptor
@@ -169,8 +171,10 @@ public abstract class AbstractSingletonProxyFactoryBean extends ProxyConfig
 		}
 		else if (!isProxyTargetClass()) {
 			// Rely on AOP infrastructure to tell us what interfaces to proxy.
-			proxyFactory.setInterfaces(
-					ClassUtils.getAllInterfacesForClass(targetSource.getTargetClass(), this.proxyClassLoader));
+			Class<?> targetClass = targetSource.getTargetClass();
+			if (targetClass != null) {
+				proxyFactory.setInterfaces(ClassUtils.getAllInterfacesForClass(targetClass, this.proxyClassLoader));
+			}
 		}
 
 		postProcessProxyFactory(proxyFactory);
@@ -180,13 +184,13 @@ public abstract class AbstractSingletonProxyFactoryBean extends ProxyConfig
 
 	/**
 	 * Determine a TargetSource for the given target (or TargetSource).
-	 * @param target target. If this is an implementation of TargetSource it is
+	 * @param target the target. If this is an implementation of TargetSource it is
 	 * used as our TargetSource; otherwise it is wrapped in a SingletonTargetSource.
 	 * @return a TargetSource for this object
 	 */
 	protected TargetSource createTargetSource(Object target) {
-		if (target instanceof TargetSource) {
-			return (TargetSource) target;
+		if (target instanceof TargetSource targetSource) {
+			return targetSource;
 		}
 		else {
 			return new SingletonTargetSource(target);
@@ -212,15 +216,15 @@ public abstract class AbstractSingletonProxyFactoryBean extends ProxyConfig
 	}
 
 	@Override
-	public Class<?> getObjectType() {
+	public @Nullable Class<?> getObjectType() {
 		if (this.proxy != null) {
 			return this.proxy.getClass();
 		}
 		if (this.proxyInterfaces != null && this.proxyInterfaces.length == 1) {
 			return this.proxyInterfaces[0];
 		}
-		if (this.target instanceof TargetSource) {
-			return ((TargetSource) this.target).getTargetClass();
+		if (this.target instanceof TargetSource targetSource) {
+			return targetSource.getTargetClass();
 		}
 		if (this.target != null) {
 			return this.target.getClass();

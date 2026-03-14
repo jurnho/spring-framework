@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.jdbc.core.simple;
 
 import java.util.Map;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.SqlParameter;
@@ -48,14 +50,14 @@ public interface SimpleJdbcCallOperations {
 	SimpleJdbcCallOperations withFunctionName(String functionName);
 
 	/**
-	 * Optionally, specify the name of the schema that contins the stored procedure.
+	 * Optionally, specify the name of the schema that contains the stored procedure.
 	 * @param schemaName the name of the schema
 	 * @return the instance of this SimpleJdbcCall
 	 */
 	SimpleJdbcCallOperations withSchemaName(String schemaName);
 
 	/**
-	 * Optionally, specify the name of the catalog that contins the stored procedure.
+	 * Optionally, specify the name of the catalog that contains the stored procedure.
 	 * <p>To provide consistency with the Oracle DatabaseMetaData, this is used to specify the
 	 * package name if the procedure is declared as part of a package.
 	 * @param catalogName the catalog or package name
@@ -71,7 +73,7 @@ public interface SimpleJdbcCallOperations {
 
 	/**
 	 * Specify one or more parameters if desired. These parameters will be supplemented with
-	 * any parameter information retrieved from the database meta data.
+	 * any parameter information retrieved from the database meta-data.
 	 * <p>Note that only parameters declared as {@code SqlParameter} and {@code SqlInOutParameter}
 	 * will be used to provide input values. This is different from the {@code StoredProcedure}
 	 * class which - for backwards compatibility reasons - allows input values to be provided
@@ -81,7 +83,7 @@ public interface SimpleJdbcCallOperations {
 	 */
 	SimpleJdbcCallOperations declareParameters(SqlParameter... sqlParameters);
 
-	/** Not used yet */
+	/** Not used yet. */
 	SimpleJdbcCallOperations useInParameterNames(String... inParameterNames);
 
 	/**
@@ -96,7 +98,7 @@ public interface SimpleJdbcCallOperations {
 	SimpleJdbcCallOperations returningResultSet(String parameterName, RowMapper<?> rowMapper);
 
 	/**
-	 * Turn off any processing of parameter meta data information obtained via JDBC.
+	 * Turn off any processing of parameter meta-data information obtained via JDBC.
 	 * @return the instance of this SimpleJdbcCall
 	 */
 	SimpleJdbcCallOperations withoutProcedureColumnMetaDataAccess();
@@ -117,23 +119,23 @@ public interface SimpleJdbcCallOperations {
 	 * Parameter values must be provided in the same order as the parameters are defined
 	 * for the stored procedure.
 	 */
-	<T> T executeFunction(Class<T> returnType, Object... args);
+	<T> @Nullable T executeFunction(Class<T> returnType, Object... args);
 
 	/**
 	 * Execute the stored function and return the results obtained as an Object of the
 	 * specified return type.
 	 * @param returnType the type of the value to return
-	 * @param args Map containing the parameter values to be used in the call
+	 * @param args a Map containing the parameter values to be used in the call
 	 */
-	<T> T executeFunction(Class<T> returnType, Map<String, ?> args);
+	<T> @Nullable T executeFunction(Class<T> returnType, Map<String, ?> args);
 
 	/**
 	 * Execute the stored function and return the results obtained as an Object of the
 	 * specified return type.
 	 * @param returnType the type of the value to return
-	 * @param args MapSqlParameterSource containing the parameter values to be used in the call
+	 * @param args the MapSqlParameterSource containing the parameter values to be used in the call
 	 */
-	<T> T executeFunction(Class<T> returnType, SqlParameterSource args);
+	<T> @Nullable T executeFunction(Class<T> returnType, SqlParameterSource args);
 
 	/**
 	 * Execute the stored procedure and return the single out parameter as an Object
@@ -144,25 +146,25 @@ public interface SimpleJdbcCallOperations {
 	 * Parameter values must be provided in the same order as the parameters are defined for
 	 * the stored procedure.
 	 */
-	<T> T executeObject(Class<T> returnType, Object... args);
+	<T> @Nullable T executeObject(Class<T> returnType, Object... args);
 
 	/**
 	 * Execute the stored procedure and return the single out parameter as an Object
 	 * of the specified return type. In the case where there are multiple out parameters,
 	 * the first one is returned and additional out parameters are ignored.
 	 * @param returnType the type of the value to return
-	 * @param args Map containing the parameter values to be used in the call
+	 * @param args a Map containing the parameter values to be used in the call
 	 */
-	<T> T executeObject(Class<T> returnType, Map<String, ?> args);
+	<T> @Nullable T executeObject(Class<T> returnType, Map<String, ?> args);
 
 	/**
 	 * Execute the stored procedure and return the single out parameter as an Object
 	 * of the specified return type. In the case where there are multiple out parameters,
 	 * the first one is returned and additional out parameters are ignored.
 	 * @param returnType the type of the value to return
-	 * @param args MapSqlParameterSource containing the parameter values to be used in the call
+	 * @param args the MapSqlParameterSource containing the parameter values to be used in the call
 	 */
-	<T> T executeObject(Class<T> returnType, SqlParameterSource args);
+	<T> @Nullable T executeObject(Class<T> returnType, SqlParameterSource args);
 
 	/**
 	 * Execute the stored procedure and return a map of output params, keyed by name
@@ -170,24 +172,24 @@ public interface SimpleJdbcCallOperations {
 	 * @param args optional array containing the in parameter values to be used in the call.
 	 * Parameter values must be provided in the same order as the parameters are defined for
 	 * the stored procedure.
-	 * @return Map of output params
+	 * @return a Map of output params
 	 */
-	Map<String, Object> execute(Object... args);
+	Map<String, @Nullable Object> execute(Object... args);
 
 	/**
 	 * Execute the stored procedure and return a map of output params, keyed by name
 	 * as in parameter declarations.
-	 * @param args Map containing the parameter values to be used in the call
-	 * @return Map of output params
+	 * @param args a Map containing the parameter values to be used in the call
+	 * @return a Map of output params
 	 */
-	Map<String, Object> execute(Map<String, ?> args);
+	Map<String, @Nullable Object> execute(Map<String, ?> args);
 
 	/**
 	 * Execute the stored procedure and return a map of output params, keyed by name
 	 * as in parameter declarations.
-	 * @param args SqlParameterSource containing the parameter values to be used in the call
-	 * @return Map of output params
+	 * @param args the SqlParameterSource containing the parameter values to be used in the call
+	 * @return a Map of output params
 	 */
-	Map<String, Object> execute(SqlParameterSource args);
+	Map<String, @Nullable Object> execute(SqlParameterSource args);
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@ package org.springframework.web.servlet.config;
 
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Element;
 
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -33,7 +34,7 @@ import org.springframework.web.servlet.resource.DefaultServletHttpRequestHandler
 
 /**
  * {@link BeanDefinitionParser} that parses a {@code default-servlet-handler} element to
- * register a {@link DefaultServletHttpRequestHandler}.  Will also register a
+ * register a {@link DefaultServletHttpRequestHandler}. Will also register a
  * {@link SimpleUrlHandlerMapping} for mapping resource requests, and a
  * {@link HttpRequestHandlerAdapter}.
  *
@@ -44,7 +45,7 @@ import org.springframework.web.servlet.resource.DefaultServletHttpRequestHandler
 class DefaultServletHandlerBeanDefinitionParser implements BeanDefinitionParser {
 
 	@Override
-	public BeanDefinition parse(Element element, ParserContext parserContext) {
+	public @Nullable BeanDefinition parse(Element element, ParserContext parserContext) {
 		Object source = parserContext.extractSource(element);
 
 		String defaultServletName = element.getAttribute("default-servlet-name");
@@ -58,7 +59,7 @@ class DefaultServletHandlerBeanDefinitionParser implements BeanDefinitionParser 
 		parserContext.getRegistry().registerBeanDefinition(defaultServletHandlerName, defaultServletHandlerDef);
 		parserContext.registerComponent(new BeanComponentDefinition(defaultServletHandlerDef, defaultServletHandlerName));
 
-		Map<String, String> urlMap = new ManagedMap<String, String>();
+		Map<String, String> urlMap = new ManagedMap<>();
 		urlMap.put("/**", defaultServletHandlerName);
 
 		RootBeanDefinition handlerMappingDef = new RootBeanDefinition(SimpleUrlHandlerMapping.class);

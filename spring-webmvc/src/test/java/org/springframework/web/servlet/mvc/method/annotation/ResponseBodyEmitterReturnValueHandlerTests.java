@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,85 +13,121 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.web.servlet.mvc.method.annotation;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-import static org.springframework.web.servlet.mvc.method.annotation.SseEmitter.*;
-
-import java.lang.reflect.Method;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
-import org.junit.Before;
-import org.junit.Test;
+import io.micrometer.context.ContextRegistry;
+import io.micrometer.context.ContextSnapshot;
+import io.micrometer.context.ContextSnapshot.Scope;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.reactivestreams.Publisher;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import org.springframework.core.MethodParameter;
+import org.springframework.core.ResolvableType;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.mock.web.test.MockAsyncContext;
-import org.springframework.mock.web.test.MockHttpServletRequest;
-import org.springframework.mock.web.test.MockHttpServletResponse;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.async.AsyncWebRequest;
 import org.springframework.web.context.request.async.StandardServletAsyncWebRequest;
+import org.springframework.web.context.request.async.WebAsyncManager;
 import org.springframework.web.context.request.async.WebAsyncUtils;
 import org.springframework.web.method.support.ModelAndViewContainer;
+import org.springframework.web.testfixture.servlet.MockAsyncContext;
+import org.springframework.web.testfixture.servlet.MockHttpServletRequest;
+import org.springframework.web.testfixture.servlet.MockHttpServletResponse;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.springframework.core.ResolvableType.forClassWithGenerics;
+import static org.springframework.web.testfixture.method.ResolvableMethod.on;
 
 /**
- * Unit tests for ResponseBodyEmitterReturnValueHandler.
+ * Tests for {@link ResponseBodyEmitterReturnValueHandler}.
+ *
  * @author Rossen Stoyanchev
  */
-public class ResponseBodyEmitterReturnValueHandlerTests {
+class ResponseBodyEmitterReturnValueHandlerTests {
 
-	private ResponseBodyEmitterReturnValueHandler handler;
+	private final ResponseBodyEmitterReturnValueHandler handler =
+			new ResponseBodyEmitterReturnValueHandler(List.of(new JacksonJsonHttpMessageConverter()));
 
-	private MockHttpServletRequest request;
+	private final MockHttpServletRequest request = new MockHttpServletRequest();
 
-	private MockHttpServletResponse response;
+	private final MockHttpServletResponse response = new MockHttpServletResponse();
 
-	private NativeWebRequest webRequest;
+	private final NativeWebRequest webRequest = new ServletWebRequest(this.request, this.response);
+
+	private final ModelAndViewContainer mavContainer = new ModelAndViewContainer();
 
 
-	@Before
-	public void setUp() throws Exception {
-
-		List<HttpMessageConverter<?>> converters = Arrays.asList(
-				new StringHttpMessageConverter(), new MappingJackson2HttpMessageConverter());
-
-		this.handler = new ResponseBodyEmitterReturnValueHandler(converters);
-		this.request = new MockHttpServletRequest();
-		this.response = new MockHttpServletResponse();
-		this.webRequest = new ServletWebRequest(this.request, this.response);
-
+	@BeforeEach
+	void setup() throws Exception {
 		AsyncWebRequest asyncWebRequest = new StandardServletAsyncWebRequest(this.request, this.response);
 		WebAsyncUtils.getAsyncManager(this.webRequest).setAsyncWebRequest(asyncWebRequest);
 		this.request.setAsyncSupported(true);
 	}
 
+
 	@Test
-	public void supportsReturnType() throws Exception {
-		assertTrue(this.handler.supportsReturnType(returnType("handle")));
-		assertTrue(this.handler.supportsReturnType(returnType("handleSse")));
-		assertTrue(this.handler.supportsReturnType(returnType("handleResponseEntity")));
-		assertFalse(this.handler.supportsReturnType(returnType("handleResponseEntityString")));
-		assertFalse(this.handler.supportsReturnType(returnType("handleResponseEntityParameterized")));
-		assertFalse(this.handler.supportsReturnType(returnType("handleRawResponseEntity")));
+	void supportsReturnTypes() {
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(ResponseBodyEmitter.class))).isTrue();
+
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(SseEmitter.class))).isTrue();
+
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(ResponseEntity.class, ResponseBodyEmitter.class))).isTrue();
+
+		ResolvableType stringFlux = forClassWithGenerics(Flux.class, String.class);
+
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(stringFlux))).isTrue();
+
+		ResolvableType responseEntityStringFlux = forClassWithGenerics(ResponseEntity.class, stringFlux);
+
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(responseEntityStringFlux))).isTrue();
 	}
 
 	@Test
-	public void responseBodyEmitter() throws Exception {
-		MethodParameter returnType = returnType("handle");
-		ResponseBodyEmitter emitter = new ResponseBodyEmitter();
-		handleReturnValue(emitter, returnType);
+	void doesNotSupportReturnTypes() {
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(ResponseEntity.class, String.class))).isFalse();
 
-		assertTrue(this.request.isAsyncStarted());
-		assertEquals("", this.response.getContentAsString());
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(forClassWithGenerics(ResponseEntity.class,
+						forClassWithGenerics(AtomicReference.class, String.class))))).isFalse();
+
+		assertThat(this.handler.supportsReturnType(
+				on(TestController.class).resolveReturnType(ResponseEntity.class))).isFalse();
+	}
+
+	@Test
+	void responseBodyEmitter() throws Exception {
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseBodyEmitter.class);
+		ResponseBodyEmitter emitter = new ResponseBodyEmitter();
+		this.handler.handleReturnValue(emitter, type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getContentAsString()).isEmpty();
 
 		SimpleBean bean = new SimpleBean();
 		bean.setId(1L);
@@ -108,30 +144,29 @@ public class ResponseBodyEmitterReturnValueHandlerTests {
 		bean.setName("Jason");
 		emitter.send(bean);
 
-		assertEquals("{\"id\":1,\"name\":\"Joe\"}\n" +
-						"{\"id\":2,\"name\":\"John\"}\n" +
-						"{\"id\":3,\"name\":\"Jason\"}",
-				this.response.getContentAsString());
+		assertThat(this.response.getContentAsString()).isEqualTo(("""
+				{"id":1,"name":"Joe"}
+				{"id":2,"name":"John"}
+				{"id":3,"name":"Jason"}"""));
 
 		MockAsyncContext asyncContext = (MockAsyncContext) this.request.getAsyncContext();
-		assertNull(asyncContext.getDispatchedPath());
+		assertThat(asyncContext.getDispatchedPath()).isNull();
 
 		emitter.complete();
-		assertNotNull(asyncContext.getDispatchedPath());
+		assertThat(asyncContext.getDispatchedPath()).isNotNull();
 	}
 
 	@Test
-	public void timeoutValueAndCallback() throws Exception {
-
-		AsyncWebRequest asyncWebRequest = mock(AsyncWebRequest.class);
+	void responseBodyEmitterWithTimeoutValue() throws Exception {
+		AsyncWebRequest asyncWebRequest = mock();
 		WebAsyncUtils.getAsyncManager(this.request).setAsyncWebRequest(asyncWebRequest);
 
 		ResponseBodyEmitter emitter = new ResponseBodyEmitter(19000L);
-		emitter.onTimeout(mock(Runnable.class));
-		emitter.onCompletion(mock(Runnable.class));
+		emitter.onTimeout(mock());
+		emitter.onCompletion(mock());
 
-		MethodParameter returnType = returnType("handle");
-		handleReturnValue(emitter, returnType);
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseBodyEmitter.class);
+		this.handler.handleReturnValue(emitter, type, this.mavContainer, this.webRequest);
 
 		verify(asyncWebRequest).setTimeout(19000L);
 		verify(asyncWebRequest).addTimeoutHandler(any(Runnable.class));
@@ -140,14 +175,31 @@ public class ResponseBodyEmitterReturnValueHandlerTests {
 	}
 
 	@Test
-	public void sseEmitter() throws Exception {
-		MethodParameter returnType = returnType("handleSse");
-		SseEmitter emitter = new SseEmitter();
-		handleReturnValue(emitter, returnType);
+	@SuppressWarnings("unchecked")
+	void responseBodyEmitterWithErrorValue() throws Exception {
+		AsyncWebRequest asyncWebRequest = mock();
+		WebAsyncUtils.getAsyncManager(this.request).setAsyncWebRequest(asyncWebRequest);
 
-		assertTrue(this.request.isAsyncStarted());
-		assertEquals(200, this.response.getStatus());
-		assertEquals("text/event-stream", this.response.getContentType());
+		ResponseBodyEmitter emitter = new ResponseBodyEmitter(19000L);
+		emitter.onError(mock());
+		emitter.onCompletion(mock());
+
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseBodyEmitter.class);
+		this.handler.handleReturnValue(emitter, type, this.mavContainer, this.webRequest);
+
+		verify(asyncWebRequest).addErrorHandler(any(Consumer.class));
+		verify(asyncWebRequest, times(2)).addCompletionHandler(any(Runnable.class));
+		verify(asyncWebRequest).startAsync();
+	}
+
+	@Test
+	void sseEmitter() throws Exception {
+		MethodParameter type = on(TestController.class).resolveReturnType(SseEmitter.class);
+		SseEmitter emitter = new SseEmitter();
+		this.handler.handleReturnValue(emitter, type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getStatus()).isEqualTo(200);
 
 		SimpleBean bean1 = new SimpleBean();
 		bean1.setId(1L);
@@ -157,85 +209,210 @@ public class ResponseBodyEmitterReturnValueHandlerTests {
 		bean2.setId(2L);
 		bean2.setName("John");
 
-		emitter.send(event().comment("a test").name("update").id("1").reconnectTime(5000L).data(bean1).data(bean2));
+		emitter.send(SseEmitter.event().
+				comment("a test").name("update").id("1").reconnectTime(5000L).data(bean1).data(bean2));
 
-		assertEquals(":a test\n" +
-						"event:update\n" +
-						"id:1\n" +
-						"retry:5000\n" +
-						"data:{\"id\":1,\"name\":\"Joe\"}\n" +
-						"data:{\"id\":2,\"name\":\"John\"}\n" +
-						"\n",
-				this.response.getContentAsString());
+		assertThat(this.response.getContentType()).isEqualTo("text/event-stream");
+		assertThat(this.response.getContentAsString()).isEqualTo(("""
+				:a test
+				event:update
+				id:1
+				retry:5000
+				data:{"id":1,"name":"Joe"}
+				data:{"id":2,"name":"John"}
+
+				"""));
 	}
 
 	@Test
-	public void responseEntitySse() throws Exception {
-		MethodParameter returnType = returnType("handleResponseEntitySse");
-		ResponseEntity<SseEmitter> entity = ResponseEntity.ok().header("foo", "bar").body(new SseEmitter());
-		handleReturnValue(entity, returnType);
+	void responseBodyFlux() throws Exception {
+		this.request.addHeader("Accept", "text/event-stream");
 
-		assertTrue(this.request.isAsyncStarted());
-		assertEquals(200, this.response.getStatus());
-		assertEquals("text/event-stream", this.response.getContentType());
-		assertEquals("bar", this.response.getHeader("foo"));
+		MethodParameter type = on(TestController.class).resolveReturnType(Flux.class, String.class);
+		this.handler.handleReturnValue(Flux.just("foo", "bar", "baz"), type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getStatus()).isEqualTo(200);
+
+		assertThat(this.response.getContentType()).isEqualTo("text/event-stream");
+		assertThat(this.response.getContentAsString()).isEqualTo("data:foo\n\ndata:bar\n\ndata:baz\n\n");
 	}
 
 	@Test
-	public void responseEntitySseNoContent() throws Exception {
-		MethodParameter returnType = returnType("handleResponseEntitySse");
-		ResponseEntity<?> entity = ResponseEntity.noContent().build();
-		handleReturnValue(entity, returnType);
+	@SuppressWarnings({"try","unused", "deprecation"})
+	void responseBodyFluxWithThreadLocal() throws Exception {
+		this.request.addHeader("Accept", "text/event-stream");
 
-		assertFalse(this.request.isAsyncStarted());
-		assertEquals(204, this.response.getStatus());
+		ThreadLocal<String> threadLocal = new ThreadLocal<>();
+		ContextRegistry.getInstance().registerThreadLocalAccessor("key", threadLocal);
+
+		CountDownLatch latch = new CountDownLatch(1);
+
+		Flux<String> flux = Flux.just("foo", "bar", "baz")
+				.publishOn(Schedulers.boundedElastic())
+				.transformDeferredContextual((theFlux, contextView) ->
+						theFlux.map(s -> {
+							try (Scope scope = ContextSnapshot.setThreadLocalsFrom(contextView, "key")) {
+								return s + threadLocal.get();
+							}
+						}))
+				.doOnTerminate(latch::countDown);
+
+		try {
+			threadLocal.set("123");
+			this.handler.handleReturnValue(flux,
+					on(TestController.class).resolveReturnType(Flux.class, String.class),
+					this.mavContainer, this.webRequest);
+		}
+		finally {
+			threadLocal.remove();
+		}
+
+		latch.await(5, TimeUnit.SECONDS);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getStatus()).isEqualTo(200);
+
+		assertThat(this.response.getContentType()).isEqualTo("text/event-stream");
+		assertThat(this.response.getContentAsString()).isEqualTo("data:foo123\n\ndata:bar123\n\ndata:baz123\n\n");
 	}
 
-	private void handleReturnValue(Object returnValue, MethodParameter returnType) throws Exception {
-		ModelAndViewContainer mavContainer = new ModelAndViewContainer();
-		this.handler.handleReturnValue(returnValue, returnType, mavContainer, this.webRequest);
+	@Test // gh-21972
+	void responseBodyFluxWithError() throws Exception {
+		this.request.addHeader("Accept", "text/event-stream");
+
+		IllegalStateException ex = new IllegalStateException("wah wah");
+		MethodParameter type = on(TestController.class).resolveReturnType(Flux.class, String.class);
+		this.handler.handleReturnValue(Flux.error(ex), type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+
+		WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(this.webRequest);
+		assertThat(asyncManager.getConcurrentResult()).isSameAs(ex);
+		assertThat(this.response.getContentType()).isEqualTo(MediaType.TEXT_EVENT_STREAM_VALUE);
 	}
 
-	private MethodParameter returnType(String methodName) throws NoSuchMethodException {
-		Method method = TestController.class.getDeclaredMethod(methodName);
-		return new MethodParameter(method, -1);
+	@Test
+	void responseEntitySse() throws Exception {
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseEntity.class, SseEmitter.class);
+		SseEmitter emitter = new SseEmitter();
+		ResponseEntity<SseEmitter> entity = ResponseEntity.ok().header("foo", "bar").body(emitter);
+		this.handler.handleReturnValue(entity, type, this.mavContainer, this.webRequest);
+		emitter.complete();
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getStatus()).isEqualTo(200);
+		assertThat(this.response.getContentType()).isEqualTo("text/event-stream");
+		assertThat(this.response.getHeader("foo")).isEqualTo("bar");
 	}
 
+	@Test
+	void responseEntitySseNoContent() throws Exception {
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseEntity.class, SseEmitter.class);
+		ResponseEntity<?> entity = ResponseEntity.noContent().header("foo", "bar").build();
+		this.handler.handleReturnValue(entity, type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isFalse();
+		assertThat(this.response.getStatus()).isEqualTo(204);
+		assertThat(this.response.getHeaders("foo")).isEqualTo(Collections.singletonList("bar"));
+	}
+
+	@Test
+	void responseEntityFlux() throws Exception {
+		ResponseEntity<Flux<String>> entity = ResponseEntity.ok().body(Flux.just("foo", "bar", "baz"));
+		ResolvableType bodyType = forClassWithGenerics(Flux.class, String.class);
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseEntity.class, bodyType);
+		this.handler.handleReturnValue(entity, type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getStatus()).isEqualTo(200);
+
+		assertThat(this.response.getContentType()).isEqualTo("text/plain");
+		assertThat(this.response.getContentAsString()).isEqualTo("foobarbaz");
+	}
+
+	@Test // SPR-17076
+	void responseEntityFluxWithCustomHeader() throws Exception {
+		Sinks.Many<SimpleBean> sink = Sinks.many().unicast().onBackpressureBuffer();
+		ResponseEntity<Flux<SimpleBean>> entity = ResponseEntity.ok().header("x-foo", "bar").body(sink.asFlux());
+		ResolvableType bodyType = forClassWithGenerics(Flux.class, SimpleBean.class);
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseEntity.class, bodyType);
+		this.handler.handleReturnValue(entity, type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getStatus()).isEqualTo(200);
+		assertThat(this.response.getHeader("x-foo")).isEqualTo("bar");
+		assertThat(this.response.isCommitted()).isFalse();
+	}
+
+	@Test // gh-35130
+	void responseEntityFluxSseWithPresetContentType() throws Exception {
+
+		ResponseEntity<Publisher<?>> entity =
+				ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(Flux.just("foo", "bar"));
+
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseEntity.class, Publisher.class);
+		this.handler.handleReturnValue(entity, type, this.mavContainer, this.webRequest);
+
+		assertThat(this.request.isAsyncStarted()).isTrue();
+		assertThat(this.response.getStatus()).isEqualTo(200);
+		assertThat(this.response.getContentType()).isEqualTo("text/event-stream");
+		assertThat(this.response.getContentAsString()).isEqualTo("data:foo\n\ndata:bar\n\n");
+	}
+
+	@Test // gh-36357
+	void responseEntityMono() throws Exception {
+
+		ResponseEntity<Publisher<?>> entity = ResponseEntity.ok()
+				.contentType(MediaType.TEXT_PLAIN)
+				.header("X-Custom", "value")
+				.body(Mono.just("foo"));
+
+		ResolvableType bodyType = forClassWithGenerics(Mono.class, String.class);
+		MethodParameter type = on(TestController.class).resolveReturnType(ResponseEntity.class, bodyType);
+		this.handler.handleReturnValue(entity, type, this.mavContainer, this.webRequest);
+
+		assertThat(this.response.getStatus()).isEqualTo(200);
+		assertThat(this.response.getHeaders("Content-Type")).containsExactly("text/plain");
+		assertThat(this.response.getHeaders("X-Custom")).containsExactly("value");
+
+		WebAsyncManager manager = WebAsyncUtils.getAsyncManager(request);
+		assertThat(manager.isConcurrentHandlingStarted()).isTrue();
+		assertThat(manager.getConcurrentResult()).isEqualTo("foo");
+	}
+
+
+	@SuppressWarnings({"unused", "ConstantConditions"})
+	private static class TestController {
+
+		private ResponseBodyEmitter h1() { return null; }
+
+		private ResponseEntity<ResponseBodyEmitter> h2() { return null; }
+
+		private SseEmitter h3() { return null; }
+
+		private ResponseEntity<SseEmitter> h4() { return null; }
+
+		private ResponseEntity<String> h5() { return null; }
+
+		private ResponseEntity<AtomicReference<String>> h6() { return null; }
+
+		private ResponseEntity<?> h7() { return null; }
+
+		private Flux<String> h8() { return null; }
+
+		private ResponseEntity<Flux<String>> h9() { return null; }
+
+		private ResponseEntity<Flux<SimpleBean>> h10() { return null; }
+
+		private ResponseEntity<Publisher<?>> h11() { return null; }
+
+		private ResponseEntity<Mono<String>> h12() { return null; }
+
+	}
 
 
 	@SuppressWarnings("unused")
-	private static class TestController {
-
-		private ResponseBodyEmitter handle() {
-			return null;
-		}
-
-		private ResponseEntity<ResponseBodyEmitter> handleResponseEntity() {
-			return null;
-		}
-
-		private SseEmitter handleSse() {
-			return null;
-		}
-
-		private ResponseEntity<SseEmitter> handleResponseEntitySse() {
-			return null;
-		}
-
-		private ResponseEntity<String> handleResponseEntityString() {
-			return null;
-		}
-
-		private ResponseEntity<AtomicReference<String>> handleResponseEntityParameterized() {
-			return null;
-		}
-
-		private ResponseEntity handleRawResponseEntity() {
-			return null;
-		}
-
-	}
-
 	private static class SimpleBean {
 
 		private Long id;

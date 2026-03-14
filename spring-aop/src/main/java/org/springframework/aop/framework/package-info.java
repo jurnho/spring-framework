@@ -12,4 +12,7 @@
  * or ApplicationContext. However, proxies can be created programmatically using the
  * ProxyFactory class.
  */
+@NullMarked
 package org.springframework.aop.framework;
+
+import org.jspecify.annotations.NullMarked;

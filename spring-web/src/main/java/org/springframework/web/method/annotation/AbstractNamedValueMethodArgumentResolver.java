@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,15 +16,24 @@
 
 package org.springframework.web.method.annotation;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import javax.servlet.ServletException;
 
+import jakarta.servlet.ServletException;
+import kotlin.reflect.KFunction;
+import kotlin.reflect.KParameter;
+import kotlin.reflect.jvm.ReflectJvmMapping;
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.ConversionNotSupportedException;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.beans.factory.config.BeanExpressionContext;
 import org.springframework.beans.factory.config.BeanExpressionResolver;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.core.KotlinDetector;
 import org.springframework.core.MethodParameter;
 import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.WebDataBinder;
@@ -39,6 +48,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * Abstract base class for resolving method arguments from a named value.
  * Request parameters, request headers, and path variables are examples of named
  * values. Each may have a name, a required flag, and a default value.
+ *
  * <p>Subclasses define how to do the following:
  * <ul>
  * <li>Obtain named value information for a method parameter
@@ -46,24 +56,29 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * <li>Handle missing argument values when argument values are required
  * <li>Optionally handle a resolved value
  * </ul>
+ *
  * <p>A default value string can contain ${...} placeholders and Spring Expression
  * Language #{...} expressions. For this to work a
  * {@link ConfigurableBeanFactory} must be supplied to the class constructor.
+ *
  * <p>A {@link WebDataBinder} is created to apply type conversion to the resolved
  * argument value if it doesn't match the method parameter type.
  *
  * @author Arjen Poutsma
  * @author Rossen Stoyanchev
  * @author Juergen Hoeller
+ * @author Sebastien Deleuze
  * @since 3.1
  */
 public abstract class AbstractNamedValueMethodArgumentResolver implements HandlerMethodArgumentResolver {
 
-	private final ConfigurableBeanFactory configurableBeanFactory;
+	private static final boolean KOTLIN_REFLECT_PRESENT = KotlinDetector.isKotlinReflectPresent();
 
-	private final BeanExpressionContext expressionContext;
+	private final @Nullable ConfigurableBeanFactory configurableBeanFactory;
 
-	private final Map<MethodParameter, NamedValueInfo> namedValueInfoCache = new ConcurrentHashMap<MethodParameter, NamedValueInfo>(256);
+	private final @Nullable BeanExpressionContext expressionContext;
+
+	private final Map<MethodParameter, NamedValueInfo> namedValueInfoCache = new ConcurrentHashMap<>(256);
 
 
 	public AbstractNamedValueMethodArgumentResolver() {
@@ -72,24 +87,28 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 	}
 
 	/**
+	 * Create a new {@link AbstractNamedValueMethodArgumentResolver} instance.
 	 * @param beanFactory a bean factory to use for resolving ${...} placeholder
 	 * and #{...} SpEL expressions in default values, or {@code null} if default
 	 * values are not expected to contain expressions
 	 */
-	public AbstractNamedValueMethodArgumentResolver(ConfigurableBeanFactory beanFactory) {
+	public AbstractNamedValueMethodArgumentResolver(@Nullable ConfigurableBeanFactory beanFactory) {
 		this.configurableBeanFactory = beanFactory;
-		this.expressionContext = (beanFactory != null ? new BeanExpressionContext(beanFactory, new RequestScope()) : null);
+		this.expressionContext =
+				(beanFactory != null ? new BeanExpressionContext(beanFactory, new RequestScope()) : null);
 	}
 
 
 	@Override
-	public final Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-			NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
+	public final @Nullable Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
 
 		NamedValueInfo namedValueInfo = getNamedValueInfo(parameter);
 		MethodParameter nestedParameter = parameter.nestedIfOptional();
+		boolean hasDefaultValue = KOTLIN_REFLECT_PRESENT && KotlinDetector.isKotlinType(parameter.getDeclaringClass()) &&
+				KotlinDelegate.hasDefaultValue(nestedParameter);
 
-		Object resolvedName = resolveStringValue(namedValueInfo.name);
+		Object resolvedName = resolveEmbeddedValuesAndExpressions(namedValueInfo.name);
 		if (resolvedName == null) {
 			throw new IllegalArgumentException(
 					"Specified name must not resolve to null: [" + namedValueInfo.name + "]");
@@ -98,30 +117,30 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 		Object arg = resolveName(resolvedName.toString(), nestedParameter, webRequest);
 		if (arg == null) {
 			if (namedValueInfo.defaultValue != null) {
-				arg = resolveStringValue(namedValueInfo.defaultValue);
+				arg = resolveEmbeddedValuesAndExpressions(namedValueInfo.defaultValue);
 			}
 			else if (namedValueInfo.required && !nestedParameter.isOptional()) {
-				handleMissingValue(namedValueInfo.name, nestedParameter, webRequest);
+				handleMissingValue(resolvedName.toString(), nestedParameter, webRequest);
 			}
-			arg = handleNullValue(namedValueInfo.name, arg, nestedParameter.getNestedParameterType());
+			if (!hasDefaultValue) {
+				arg = handleNullValue(resolvedName.toString(), arg, nestedParameter.getNestedParameterType());
+			}
 		}
 		else if ("".equals(arg) && namedValueInfo.defaultValue != null) {
-			arg = resolveStringValue(namedValueInfo.defaultValue);
+			arg = resolveEmbeddedValuesAndExpressions(namedValueInfo.defaultValue);
 		}
 
-		if (binderFactory != null) {
-			WebDataBinder binder = binderFactory.createBinder(webRequest, null, namedValueInfo.name);
-			try {
-				arg = binder.convertIfNecessary(arg, parameter.getParameterType(), parameter);
-			}
-			catch (ConversionNotSupportedException ex) {
-				throw new MethodArgumentConversionNotSupportedException(arg, ex.getRequiredType(),
-						namedValueInfo.name, parameter, ex.getCause());
-			}
-			catch (TypeMismatchException ex) {
-				throw new MethodArgumentTypeMismatchException(arg, ex.getRequiredType(),
-						namedValueInfo.name, parameter, ex.getCause());
-
+		if (binderFactory != null && (arg != null || !hasDefaultValue)) {
+			arg = convertIfNecessary(parameter, webRequest, binderFactory, namedValueInfo, arg);
+			// Check for null value after conversion of incoming argument value
+			if (arg == null) {
+				if (namedValueInfo.defaultValue != null) {
+					arg = resolveEmbeddedValuesAndExpressions(namedValueInfo.defaultValue);
+					arg = convertIfNecessary(parameter, webRequest, binderFactory, namedValueInfo, arg);
+				}
+				else if (namedValueInfo.required && !nestedParameter.isOptional()) {
+					handleMissingValueAfterConversion(resolvedName.toString(), nestedParameter, webRequest);
+				}
 			}
 		}
 
@@ -156,12 +175,13 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 	 */
 	private NamedValueInfo updateNamedValueInfo(MethodParameter parameter, NamedValueInfo info) {
 		String name = info.name;
-		if (info.name.length() == 0) {
+		if (info.name.isEmpty()) {
 			name = parameter.getParameterName();
 			if (name == null) {
-				throw new IllegalArgumentException(
-						"Name for argument type [" + parameter.getNestedParameterType().getName() +
-						"] not available, and parameter name information not found in class file either.");
+				throw new IllegalArgumentException("""
+						Name for argument of type [%s] not specified, and parameter name information not \
+						available via reflection. Ensure that the compiler uses the '-parameters' flag."""
+							.formatted(parameter.getNestedParameterType().getName()));
 			}
 		}
 		String defaultValue = (ValueConstants.DEFAULT_NONE.equals(info.defaultValue) ? null : info.defaultValue);
@@ -172,8 +192,8 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 	 * Resolve the given annotation-specified value,
 	 * potentially containing placeholders and expressions.
 	 */
-	private Object resolveStringValue(String value) {
-		if (this.configurableBeanFactory == null) {
+	private @Nullable Object resolveEmbeddedValuesAndExpressions(String value) {
+		if (this.configurableBeanFactory == null || this.expressionContext == null) {
 			return value;
 		}
 		String placeholdersResolved = this.configurableBeanFactory.resolveEmbeddedValue(value);
@@ -193,7 +213,7 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 	 * @return the resolved argument (may be {@code null})
 	 * @throws Exception in case of errors
 	 */
-	protected abstract Object resolveName(String name, MethodParameter parameter, NativeWebRequest request)
+	protected abstract @Nullable Object resolveName(String name, MethodParameter parameter, NativeWebRequest request)
 			throws Exception;
 
 	/**
@@ -204,7 +224,9 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 	 * @param request the current request
 	 * @since 4.3
 	 */
-	protected void handleMissingValue(String name, MethodParameter parameter, NativeWebRequest request) throws Exception {
+	protected void handleMissingValue(String name, MethodParameter parameter, NativeWebRequest request)
+			throws Exception {
+
 		handleMissingValue(name, parameter);
 	}
 
@@ -220,11 +242,24 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 	}
 
 	/**
+	 * Invoked when a named value is present but becomes {@code null} after conversion.
+	 * @param name the name for the value
+	 * @param parameter the method parameter
+	 * @param request the current request
+	 * @since 5.3.6
+	 */
+	protected void handleMissingValueAfterConversion(String name, MethodParameter parameter, NativeWebRequest request)
+			throws Exception {
+
+		handleMissingValue(name, parameter, request);
+	}
+
+	/**
 	 * A {@code null} results in a {@code false} value for {@code boolean}s or an exception for other primitives.
 	 */
-	private Object handleNullValue(String name, Object value, Class<?> paramType) {
+	private @Nullable Object handleNullValue(String name, @Nullable Object value, Class<?> paramType) {
 		if (value == null) {
-			if (Boolean.TYPE.equals(paramType)) {
+			if (paramType == boolean.class) {
 				return Boolean.FALSE;
 			}
 			else if (paramType.isPrimitive()) {
@@ -236,16 +271,42 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 		return value;
 	}
 
+	private static @Nullable Object convertIfNecessary(
+			MethodParameter parameter, NativeWebRequest webRequest, WebDataBinderFactory binderFactory,
+			NamedValueInfo namedValueInfo, @Nullable Object arg) throws Exception {
+
+		WebDataBinder binder = binderFactory.createBinder(webRequest, null, namedValueInfo.name);
+		Class<?> parameterType = parameter.getParameterType();
+		if (KotlinDetector.isInlineClass(parameterType)) {
+			Constructor<?> ctor = BeanUtils.findPrimaryConstructor(parameterType);
+			if (ctor != null) {
+				parameterType = ctor.getParameterTypes()[0];
+			}
+		}
+		try {
+			arg = binder.convertIfNecessary(arg, parameterType, parameter);
+		}
+		catch (ConversionNotSupportedException ex) {
+			throw new MethodArgumentConversionNotSupportedException(arg, ex.getRequiredType(),
+					namedValueInfo.name, parameter, ex.getCause());
+		}
+		catch (TypeMismatchException ex) {
+			throw new MethodArgumentTypeMismatchException(arg, ex.getRequiredType(),
+					namedValueInfo.name, parameter, ex.getCause());
+		}
+		return arg;
+	}
+
 	/**
 	 * Invoked after a value is resolved.
 	 * @param arg the resolved argument value
 	 * @param name the argument name
 	 * @param parameter the argument parameter type
-	 * @param mavContainer the {@link ModelAndViewContainer}, which may be {@code null}
+	 * @param mavContainer the {@link ModelAndViewContainer} (may be {@code null})
 	 * @param webRequest the current request
 	 */
-	protected void handleResolvedValue(Object arg, String name, MethodParameter parameter,
-			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) {
+	protected void handleResolvedValue(@Nullable Object arg, String name, MethodParameter parameter,
+			@Nullable ModelAndViewContainer mavContainer, NativeWebRequest webRequest) {
 	}
 
 
@@ -258,12 +319,40 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 
 		private final boolean required;
 
-		private final String defaultValue;
+		private final @Nullable String defaultValue;
 
-		public NamedValueInfo(String name, boolean required, String defaultValue) {
+		public NamedValueInfo(String name, boolean required, @Nullable String defaultValue) {
 			this.name = name;
 			this.required = required;
 			this.defaultValue = defaultValue;
+		}
+	}
+
+
+	/**
+	 * Inner class to avoid a hard dependency on Kotlin at runtime.
+	 */
+	private static class KotlinDelegate {
+
+		/**
+		 * Check whether the specified {@link MethodParameter} represents a nullable Kotlin type
+		 * or an optional parameter (with a default value in the Kotlin declaration).
+		 */
+		public static boolean hasDefaultValue(MethodParameter parameter) {
+			Method method = parameter.getMethod();
+			if (method == null) {
+				return false;
+			}
+			KFunction<?> function = ReflectJvmMapping.getKotlinFunction(method);
+			if (function != null) {
+				int index = 0;
+				for (KParameter kParameter : function.getParameters()) {
+					if (KParameter.Kind.VALUE.equals(kParameter.getKind()) && parameter.getParameterIndex() == index++) {
+						return kParameter.isOptional();
+					}
+				}
+			}
+			return false;
 		}
 	}
 

@@ -17,4 +17,7 @@
  * <p>Spring AOP can be used programmatically or (preferably)
  * integrated with the Spring IoC container.
  */
+@NullMarked
 package org.springframework.aop;
+
+import org.jspecify.annotations.NullMarked;

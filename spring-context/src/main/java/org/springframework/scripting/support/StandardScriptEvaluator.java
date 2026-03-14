@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,10 +18,13 @@ package org.springframework.scripting.support;
 
 import java.io.IOException;
 import java.util.Map;
+
 import javax.script.Bindings;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.core.io.Resource;
@@ -42,9 +45,11 @@ import org.springframework.util.StringUtils;
  */
 public class StandardScriptEvaluator implements ScriptEvaluator, BeanClassLoaderAware {
 
-	private volatile ScriptEngineManager scriptEngineManager;
+	private @Nullable String engineName;
 
-	private String engineName;
+	private volatile @Nullable Bindings globalBindings;
+
+	private volatile @Nullable ScriptEngineManager scriptEngineManager;
 
 
 	/**
@@ -73,7 +78,7 @@ public class StandardScriptEvaluator implements ScriptEvaluator, BeanClassLoader
 
 
 	/**
-	 * Set the name of the language meant for evaluating the scripts (e.g. "Groovy").
+	 * Set the name of the language meant for evaluating the scripts (for example, "Groovy").
 	 * <p>This is effectively an alias for {@link #setEngineName "engineName"},
 	 * potentially (but not yet) providing common abbreviations for certain languages
 	 * beyond what the JSR-223 script engine factory exposes.
@@ -84,7 +89,7 @@ public class StandardScriptEvaluator implements ScriptEvaluator, BeanClassLoader
 	}
 
 	/**
-	 * Set the name of the script engine for evaluating the scripts (e.g. "Groovy"),
+	 * Set the name of the script engine for evaluating the scripts (for example, "Groovy"),
 	 * as exposed by the JSR-223 script engine factory.
 	 * @since 4.2.2
 	 * @see #setLanguage
@@ -102,26 +107,35 @@ public class StandardScriptEvaluator implements ScriptEvaluator, BeanClassLoader
 	 * @see javax.script.SimpleBindings
 	 */
 	public void setGlobalBindings(Map<String, Object> globalBindings) {
-		if (globalBindings != null) {
-			this.scriptEngineManager.setBindings(StandardScriptUtils.getBindings(globalBindings));
+		Bindings bindings = StandardScriptUtils.getBindings(globalBindings);
+		this.globalBindings = bindings;
+		ScriptEngineManager scriptEngineManager = this.scriptEngineManager;
+		if (scriptEngineManager != null) {
+			scriptEngineManager.setBindings(bindings);
 		}
 	}
 
 	@Override
 	public void setBeanClassLoader(ClassLoader classLoader) {
-		if (this.scriptEngineManager == null) {
-			this.scriptEngineManager = new ScriptEngineManager(classLoader);
+		ScriptEngineManager scriptEngineManager = this.scriptEngineManager;
+		if (scriptEngineManager == null) {
+			scriptEngineManager = new ScriptEngineManager(classLoader);
+			this.scriptEngineManager = scriptEngineManager;
+			Bindings bindings = this.globalBindings;
+			if (bindings != null) {
+				scriptEngineManager.setBindings(bindings);
+			}
 		}
 	}
 
 
 	@Override
-	public Object evaluate(ScriptSource script) {
+	public @Nullable Object evaluate(ScriptSource script) {
 		return evaluate(script, null);
 	}
 
 	@Override
-	public Object evaluate(ScriptSource script, Map<String, Object> argumentBindings) {
+	public @Nullable Object evaluate(ScriptSource script, @Nullable Map<String, Object> argumentBindings) {
 		ScriptEngine engine = getScriptEngine(script);
 		try {
 			if (CollectionUtils.isEmpty(argumentBindings)) {
@@ -146,21 +160,23 @@ public class StandardScriptEvaluator implements ScriptEvaluator, BeanClassLoader
 	 * @return the ScriptEngine (never {@code null})
 	 */
 	protected ScriptEngine getScriptEngine(ScriptSource script) {
-		if (this.scriptEngineManager == null) {
-			this.scriptEngineManager = new ScriptEngineManager();
+		ScriptEngineManager scriptEngineManager = this.scriptEngineManager;
+		if (scriptEngineManager == null) {
+			scriptEngineManager = new ScriptEngineManager();
+			this.scriptEngineManager = scriptEngineManager;
 		}
 
 		if (StringUtils.hasText(this.engineName)) {
-			return StandardScriptUtils.retrieveEngineByName(this.scriptEngineManager, this.engineName);
+			return StandardScriptUtils.retrieveEngineByName(scriptEngineManager, this.engineName);
 		}
-		else if (script instanceof ResourceScriptSource) {
-			Resource resource = ((ResourceScriptSource) script).getResource();
+		else if (script instanceof ResourceScriptSource resourceScriptSource) {
+			Resource resource = resourceScriptSource.getResource();
 			String extension = StringUtils.getFilenameExtension(resource.getFilename());
 			if (extension == null) {
 				throw new IllegalStateException(
 						"No script language defined, and no file extension defined for resource: " + resource);
 			}
-			ScriptEngine engine = this.scriptEngineManager.getEngineByExtension(extension);
+			ScriptEngine engine = scriptEngineManager.getEngineByExtension(extension);
 			if (engine == null) {
 				throw new IllegalStateException("No matching engine found for file extension '" + extension + "'");
 			}

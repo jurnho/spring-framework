@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,11 +16,216 @@
 
 package org.springframework.web.servlet.tags.form;
 
-import javax.servlet.jsp.JspException;
+import java.util.Map;
+
+import jakarta.servlet.jsp.JspException;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Data-binding-aware JSP tag for rendering an HTML '{@code input}'
- * element with a '{@code type}' of '{@code text}'.
+ * The {@code <input>} tag renders an HTML 'input' tag with type 'text' using
+ * the bound value.
+ *
+ * <h3>Attribute Summary</h3>
+ * <table>
+ * <thead>
+ * <tr>
+ * <th class="table-header col-first">Attribute</th>
+ * <th class="table-header col-second">Required?</th>
+ * <th class="table-header col-second">Runtime Expression?</th>
+ * <th class="table-header col-last">Description</th>
+ * </tr>
+ * </thead>
+ * <tbody>
+ * <tr class="even-row-color">
+ * <td><p>accesskey</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>alt</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>autocomplete</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Common Optional Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>cssClass</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>cssErrorClass</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute. Used when the bound field has errors.</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>cssStyle</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>dir</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>disabled</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute. Setting the value of this attribute to
+ * 'true' will disable the HTML element.</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>htmlEscape</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Enable/disable HTML escaping of rendered values.</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>id</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>lang</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>maxlength</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onblur</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onchange</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onclick</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>ondblclick</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onfocus</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onkeydown</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onkeypress</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onkeyup</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmousedown</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onmousemove</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmouseout</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onmouseover</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmouseup</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onselect</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>path</p></td>
+ * <td><p>true</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Path to property for data binding</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>readonly</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute. Setting the value of this attribute to
+ * 'true' will make the HTML element readonly.</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>size</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>tabindex</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>title</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * </tbody>
+ * </table>
  *
  * @author Rob Harrop
  * @author Juergen Hoeller
@@ -38,20 +243,18 @@ public class InputTag extends AbstractHtmlInputElementTag {
 
 	public static final String ONSELECT_ATTRIBUTE = "onselect";
 
-	public static final String READONLY_ATTRIBUTE = "readonly";
-
 	public static final String AUTOCOMPLETE_ATTRIBUTE = "autocomplete";
 
 
-	private String size;
+	private @Nullable String size;
 
-	private String maxlength;
+	private @Nullable String maxlength;
 
-	private String alt;
+	private @Nullable String alt;
 
-	private String onselect;
+	private @Nullable String onselect;
 
-	private String autocomplete;
+	private @Nullable String autocomplete;
 
 
 	/**
@@ -65,7 +268,7 @@ public class InputTag extends AbstractHtmlInputElementTag {
 	/**
 	 * Get the value of the '{@code size}' attribute.
 	 */
-	protected String getSize() {
+	protected @Nullable String getSize() {
 		return this.size;
 	}
 
@@ -80,7 +283,7 @@ public class InputTag extends AbstractHtmlInputElementTag {
 	/**
 	 * Get the value of the '{@code maxlength}' attribute.
 	 */
-	protected String getMaxlength() {
+	protected @Nullable String getMaxlength() {
 		return this.maxlength;
 	}
 
@@ -95,7 +298,7 @@ public class InputTag extends AbstractHtmlInputElementTag {
 	/**
 	 * Get the value of the '{@code alt}' attribute.
 	 */
-	protected String getAlt() {
+	protected @Nullable String getAlt() {
 		return this.alt;
 	}
 
@@ -110,7 +313,7 @@ public class InputTag extends AbstractHtmlInputElementTag {
 	/**
 	 * Get the value of the '{@code onselect}' attribute.
 	 */
-	protected String getOnselect() {
+	protected @Nullable String getOnselect() {
 		return this.onselect;
 	}
 
@@ -125,7 +328,7 @@ public class InputTag extends AbstractHtmlInputElementTag {
 	/**
 	 * Get the value of the '{@code autocomplete}' attribute.
 	 */
-	protected String getAutocomplete() {
+	protected @Nullable String getAutocomplete() {
 		return this.autocomplete;
 	}
 
@@ -140,7 +343,8 @@ public class InputTag extends AbstractHtmlInputElementTag {
 		tagWriter.startTag("input");
 
 		writeDefaultAttributes(tagWriter);
-		if (!hasDynamicTypeAttribute()) {
+		Map<String, Object> attributes = getDynamicAttributes();
+		if (attributes == null || !attributes.containsKey("type")) {
 			tagWriter.writeAttribute("type", getType());
 		}
 		writeValue(tagWriter);
@@ -156,10 +360,6 @@ public class InputTag extends AbstractHtmlInputElementTag {
 		return SKIP_BODY;
 	}
 
-	private boolean hasDynamicTypeAttribute() {
-		return getDynamicAttributes() != null && getDynamicAttributes().containsKey("type");
-	}
-
 	/**
 	 * Writes the '{@code value}' attribute to the supplied {@link TagWriter}.
 	 * Subclasses may choose to override this implementation to control exactly
@@ -167,7 +367,14 @@ public class InputTag extends AbstractHtmlInputElementTag {
 	 */
 	protected void writeValue(TagWriter tagWriter) throws JspException {
 		String value = getDisplayString(getBoundValue(), getPropertyEditor());
-		String type = hasDynamicTypeAttribute() ? (String) getDynamicAttributes().get("type") : getType();
+		String type = null;
+		Map<String, Object> attributes = getDynamicAttributes();
+		if (attributes != null) {
+			type = (String) attributes.get("type");
+		}
+		if (type == null) {
+			type = getType();
+		}
 		tagWriter.writeAttribute("value", processFieldValue(getName(), value, type));
 	}
 
@@ -177,12 +384,7 @@ public class InputTag extends AbstractHtmlInputElementTag {
 	 */
 	@Override
 	protected boolean isValidDynamicAttribute(String localName, Object value) {
-		if ("type".equals(localName)) {
-			if ("checkbox".equals(value) || "radio".equals(value)) {
-				return false;
-			}
-		}
-		return true;
+		return !("type".equals(localName) && ("checkbox".equals(value) || "radio".equals(value)));
 	}
 
 	/**

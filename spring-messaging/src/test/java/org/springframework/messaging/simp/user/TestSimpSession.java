@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,19 +19,24 @@ package org.springframework.messaging.simp.user;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
 
+/**
+ * @author Rossen Stoyanchev
+ */
 public class TestSimpSession implements SimpSession {
 
-	private String id;
+	private final String id;
 
 	private TestSimpUser user;
 
-	private Set<SimpSubscription> subscriptions = new HashSet<>();
+	private final Set<SimpSubscription> subscriptions = new HashSet<>();
 
 
 	public TestSimpSession(String id) {
 		this.id = id;
 	}
+
 
 	@Override
 	public String getId() {
@@ -59,9 +64,10 @@ public class TestSimpSession implements SimpSession {
 		}
 	}
 
+
 	@Override
-	public boolean equals(Object other) {
-		return (this == other || (other instanceof SimpSession && this.id.equals(((SimpSession) other).getId())));
+	public boolean equals(@Nullable Object obj) {
+		return (this == obj || (obj instanceof SimpSession that && this.id.equals(that.getId())));
 	}
 
 	@Override

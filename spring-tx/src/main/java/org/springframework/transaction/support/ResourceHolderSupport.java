@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,14 +18,16 @@ package org.springframework.transaction.support;
 
 import java.util.Date;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.transaction.TransactionTimedOutException;
 
 /**
  * Convenient base class for resource holders.
  *
- * <p>Features rollback-only support for nested transactions.
- * Can expire after a certain number of seconds or milliseconds,
- * to determine transactional timeouts.
+ * <p>Features rollback-only support for participating transactions.
+ * Can expire after a certain number of seconds or milliseconds
+ * in order to determine a transactional timeout.
  *
  * @author Juergen Hoeller
  * @since 02.02.2004
@@ -38,7 +40,7 @@ public abstract class ResourceHolderSupport implements ResourceHolder {
 
 	private boolean rollbackOnly = false;
 
-	private Date deadline;
+	private @Nullable Date deadline;
 
 	private int referenceCount = 0;
 
@@ -67,6 +69,17 @@ public abstract class ResourceHolderSupport implements ResourceHolder {
 	}
 
 	/**
+	 * Reset the rollback-only status for this resource transaction.
+	 * <p>Only really intended to be called after custom rollback steps which
+	 * keep the original resource in action, for example, in case of a savepoint.
+	 * @since 5.0
+	 * @see org.springframework.transaction.SavepointManager#rollbackToSavepoint
+	 */
+	public void resetRollbackOnly() {
+		this.rollbackOnly = false;
+	}
+
+	/**
 	 * Return whether the resource transaction is marked as rollback-only.
 	 */
 	public boolean isRollbackOnly() {
@@ -78,7 +91,7 @@ public abstract class ResourceHolderSupport implements ResourceHolder {
 	 * @param seconds number of seconds until expiration
 	 */
 	public void setTimeoutInSeconds(int seconds) {
-		setTimeoutInMillis(seconds * 1000);
+		setTimeoutInMillis(seconds * 1000L);
 	}
 
 	/**
@@ -100,13 +113,13 @@ public abstract class ResourceHolderSupport implements ResourceHolder {
 	 * Return the expiration deadline of this object.
 	 * @return the deadline as Date object
 	 */
-	public Date getDeadline() {
+	public @Nullable Date getDeadline() {
 		return this.deadline;
 	}
 
 	/**
 	 * Return the time to live for this object in seconds.
-	 * Rounds up eagerly, e.g. 9.00001 still to 10.
+	 * Rounds up eagerly, for example, 9.00001 still to 10.
 	 * @return number of seconds until expiration
 	 * @throws TransactionTimedOutException if the deadline has already been reached
 	 */
@@ -119,7 +132,7 @@ public abstract class ResourceHolderSupport implements ResourceHolder {
 
 	/**
 	 * Return the time to live for this object in milliseconds.
-	 * @return number of millseconds until expiration
+	 * @return number of milliseconds until expiration
 	 * @throws TransactionTimedOutException if the deadline has already been reached
 	 */
 	public long getTimeToLiveInMillis() throws TransactionTimedOutException{

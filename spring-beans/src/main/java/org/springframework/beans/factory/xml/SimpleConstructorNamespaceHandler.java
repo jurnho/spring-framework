@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@ package org.springframework.beans.factory.xml;
 
 import java.util.Collection;
 
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -49,7 +50,7 @@ import org.springframework.util.StringUtils;
  * the bean that will be considered as a parameter.
  *
  * <b>Note</b>: This implementation supports only named parameters - there is no
- * support for indexes or types. Further more, the names are used as hints by
+ * support for indexes or types. Furthermore, the names are used as hints by
  * the container which, by default, does type introspection.
  *
  * @author Costin Leau
@@ -68,7 +69,7 @@ public class SimpleConstructorNamespaceHandler implements NamespaceHandler {
 	}
 
 	@Override
-	public BeanDefinition parse(Element element, ParserContext parserContext) {
+	public @Nullable BeanDefinition parse(Element element, ParserContext parserContext) {
 		parserContext.getReaderContext().error(
 				"Class [" + getClass().getName() + "] does not support custom elements.", element);
 		return null;
@@ -76,10 +77,9 @@ public class SimpleConstructorNamespaceHandler implements NamespaceHandler {
 
 	@Override
 	public BeanDefinitionHolder decorate(Node node, BeanDefinitionHolder definition, ParserContext parserContext) {
-		if (node instanceof Attr) {
-			Attr attr = (Attr) node;
-			String argName = StringUtils.trimWhitespace(parserContext.getDelegate().getLocalName(attr));
-			String argValue = StringUtils.trimWhitespace(attr.getValue());
+		if (node instanceof Attr attr) {
+			String argName = parserContext.getDelegate().getLocalName(attr).strip();
+			String argValue = attr.getValue().strip();
 
 			ConstructorArgumentValues cvs = definition.getBeanDefinition().getConstructorArgumentValues();
 			boolean ref = false;
@@ -116,7 +116,7 @@ public class SimpleConstructorNamespaceHandler implements NamespaceHandler {
 								"Constructor argument '" + argName + "' specifies a negative index", attr);
 					}
 
-					if (cvs.hasIndexedArgumentValue(index)){
+					if (cvs.hasIndexedArgumentValue(index)) {
 						parserContext.getReaderContext().error(
 								"Constructor argument '" + argName + "' with index "+ index+" already defined using <constructor-arg>." +
 								" Only one approach may be used per argument.", attr);
@@ -128,7 +128,7 @@ public class SimpleConstructorNamespaceHandler implements NamespaceHandler {
 			// no escaping -> ctr name
 			else {
 				String name = Conventions.attributeNameToPropertyName(argName);
-				if (containsArgWithName(name, cvs)){
+				if (containsArgWithName(name, cvs)) {
 					parserContext.getReaderContext().error(
 							"Constructor argument '" + argName + "' already defined using <constructor-arg>." +
 							" Only one approach may be used per argument.", attr);

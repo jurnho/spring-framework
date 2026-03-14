@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,60 +19,76 @@ package org.springframework.context.annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
+import example.scannable.FooDao;
 import example.scannable.FooService;
+import example.scannable.FooServiceImpl;
 import example.scannable.ServiceInvocationCounter;
+import example.scannable.StubFooDao;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import org.springframework.aop.framework.AopContext;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author Juergen Hoeller
  * @author Chris Beams
  */
-public class EnableAspectJAutoProxyTests {
+class EnableAspectJAutoProxyTests {
 
 	@Test
-	public void withJdkProxy() {
-		ApplicationContext ctx = new AnnotationConfigApplicationContext(ConfigWithJdkProxy.class);
+	void withJdkProxy() {
+		ConfigurableApplicationContext ctx = new AnnotationConfigApplicationContext(ConfigWithJdkProxy.class);
 
 		aspectIsApplied(ctx);
-		assertThat(AopUtils.isJdkDynamicProxy(ctx.getBean(FooService.class)), is(true));
+		assertThat(AopUtils.isJdkDynamicProxy(ctx.getBean(FooService.class))).isTrue();
+		assertThat(AopUtils.isJdkDynamicProxy(ctx.getBean("otherFooService"))).isTrue();
+		ctx.close();
 	}
 
 	@Test
-	public void withCglibProxy() {
-		ApplicationContext ctx = new AnnotationConfigApplicationContext(ConfigWithCglibProxy.class);
+	void withCglibProxy() {
+		ConfigurableApplicationContext ctx = new AnnotationConfigApplicationContext(ConfigWithCglibProxy.class);
 
 		aspectIsApplied(ctx);
-		assertThat(AopUtils.isCglibProxy(ctx.getBean(FooService.class)), is(true));
+		assertThat(AopUtils.isCglibProxy(ctx.getBean(FooService.class))).isTrue();
+		assertThat(AopUtils.isJdkDynamicProxy(ctx.getBean("otherFooService"))).isTrue();
+		ctx.close();
+	}
+
+	@Test
+	void withExposedProxy() {
+		ConfigurableApplicationContext ctx = new AnnotationConfigApplicationContext(ConfigWithExposedProxy.class);
+
+		aspectIsApplied(ctx);
+		assertThat(AopUtils.isJdkDynamicProxy(ctx.getBean(FooService.class))).isTrue();
+		ctx.close();
 	}
 
 	private void aspectIsApplied(ApplicationContext ctx) {
 		FooService fooService = ctx.getBean(FooService.class);
 		ServiceInvocationCounter counter = ctx.getBean(ServiceInvocationCounter.class);
 
-		assertEquals(0, counter.getCount());
+		assertThat(counter.getCount()).isEqualTo(0);
 
-		assertTrue(fooService.isInitCalled());
-		assertEquals(1, counter.getCount());
+		assertThat(fooService.isInitCalled()).isTrue();
+		assertThat(counter.getCount()).isEqualTo(1);
 
 		String value = fooService.foo(1);
-		assertEquals("bar", value);
-		assertEquals(2, counter.getCount());
+		assertThat(value).isEqualTo("bar");
+		assertThat(counter.getCount()).isEqualTo(2);
 
 		fooService.foo(1);
-		assertEquals(3, counter.getCount());
+		assertThat(counter.getCount()).isEqualTo(3);
 	}
 
 	@Test
-	public void withAnnotationOnArgumentAndJdkProxy() {
+	void withAnnotationOnArgumentAndJdkProxy() {
 		ConfigurableApplicationContext ctx = new AnnotationConfigApplicationContext(
 				ConfigWithJdkProxy.class, SampleService.class, LoggingAspect.class);
 
@@ -81,10 +97,11 @@ public class EnableAspectJAutoProxyTests {
 		sampleService.execute(new SampleInputBean());
 		sampleService.execute((SampleDto) null);
 		sampleService.execute((SampleInputBean) null);
+		ctx.close();
 	}
 
 	@Test
-	public void withAnnotationOnArgumentAndCglibProxy() {
+	void withAnnotationOnArgumentAndCglibProxy() {
 		ConfigurableApplicationContext ctx = new AnnotationConfigApplicationContext(
 				ConfigWithCglibProxy.class, SampleService.class, LoggingAspect.class);
 
@@ -93,6 +110,7 @@ public class EnableAspectJAutoProxyTests {
 		sampleService.execute(new SampleInputBean());
 		sampleService.execute((SampleDto) null);
 		sampleService.execute((SampleInputBean) null);
+		ctx.close();
 	}
 
 
@@ -101,24 +119,49 @@ public class EnableAspectJAutoProxyTests {
 	static class ConfigWithJdkProxy {
 	}
 
+
 	@ComponentScan("example.scannable")
 	@EnableAspectJAutoProxy(proxyTargetClass = true)
 	static class ConfigWithCglibProxy {
 	}
 
 
-	@Retention(RetentionPolicy.RUNTIME)
-	public @interface Loggable {
+	@Import({ServiceInvocationCounter.class, StubFooDao.class})
+	@EnableAspectJAutoProxy(exposeProxy = true)
+	static class ConfigWithExposedProxy {
+
+		@Bean
+		FooService fooServiceImpl(final ApplicationContext context) {
+			return new FooServiceImpl() {
+				@Override
+				public String foo(int id) {
+					assertThat(AopContext.currentProxy()).isNotNull();
+					return super.foo(id);
+				}
+				@Override
+				protected FooDao fooDao() {
+					return context.getBean(FooDao.class);
+				}
+			};
+		}
 	}
+
+
+	@Retention(RetentionPolicy.RUNTIME)
+	@interface Loggable {
+	}
+
 
 	@Loggable
-	public static class SampleDto {
+	static class SampleDto {
 	}
 
-	public static class SampleInputBean {
+
+	static class SampleInputBean {
 	}
 
-	public static class SampleService {
+
+	static class SampleService {
 
 		// Not matched method on {@link LoggingAspect}.
 		public void execute(SampleInputBean inputBean) {
@@ -128,6 +171,7 @@ public class EnableAspectJAutoProxyTests {
 		public void execute(SampleDto dto) {
 		}
 	}
+
 
 	@Aspect
 	public static class LoggingAspect {

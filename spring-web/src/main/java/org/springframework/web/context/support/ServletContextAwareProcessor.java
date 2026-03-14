@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,8 +16,9 @@
 
 package org.springframework.web.context.support;
 
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletContext;
+import jakarta.servlet.ServletConfig;
+import jakarta.servlet.ServletContext;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -40,9 +41,9 @@ import org.springframework.web.context.ServletContextAware;
  */
 public class ServletContextAwareProcessor implements BeanPostProcessor {
 
-	private ServletContext servletContext;
+	private @Nullable ServletContext servletContext;
 
-	private ServletConfig servletConfig;
+	private @Nullable ServletConfig servletConfig;
 
 
 	/**
@@ -70,7 +71,7 @@ public class ServletContextAwareProcessor implements BeanPostProcessor {
 	/**
 	 * Create a new ServletContextAwareProcessor for the given context and config.
 	 */
-	public ServletContextAwareProcessor(ServletContext servletContext, ServletConfig servletConfig) {
+	public ServletContextAwareProcessor(@Nullable ServletContext servletContext, @Nullable ServletConfig servletConfig) {
 		this.servletContext = servletContext;
 		this.servletConfig = servletConfig;
 	}
@@ -81,7 +82,7 @@ public class ServletContextAwareProcessor implements BeanPostProcessor {
 	 * can be overridden by subclasses when a context is obtained after the post-processor
 	 * has been registered.
 	 */
-	protected ServletContext getServletContext() {
+	protected @Nullable ServletContext getServletContext() {
 		if (this.servletContext == null && getServletConfig() != null) {
 			return getServletConfig().getServletContext();
 		}
@@ -89,21 +90,21 @@ public class ServletContextAwareProcessor implements BeanPostProcessor {
 	}
 
 	/**
-	 * Returns the {@link ServletContext} to be injected or {@code null}. This method
+	 * Returns the {@link ServletConfig} to be injected or {@code null}. This method
 	 * can be overridden by subclasses when a context is obtained after the post-processor
 	 * has been registered.
 	 */
-	protected ServletConfig getServletConfig() {
+	protected @Nullable ServletConfig getServletConfig() {
 		return this.servletConfig;
 	}
 
 	@Override
 	public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
-		if (getServletContext() != null && bean instanceof ServletContextAware) {
-			((ServletContextAware) bean).setServletContext(getServletContext());
+		if (getServletContext() != null && bean instanceof ServletContextAware servletContextAware) {
+			servletContextAware.setServletContext(getServletContext());
 		}
-		if (getServletConfig() != null && bean instanceof ServletConfigAware) {
-			((ServletConfigAware) bean).setServletConfig(getServletConfig());
+		if (getServletConfig() != null && bean instanceof ServletConfigAware servletConfigAware) {
+			servletConfigAware.setServletConfig(getServletConfig());
 		}
 		return bean;
 	}

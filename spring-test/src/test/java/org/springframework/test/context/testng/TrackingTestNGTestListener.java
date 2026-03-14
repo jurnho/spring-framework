@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,11 @@
  */
 
 package org.springframework.test.context.testng;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.ITestContext;
 import org.testng.ITestListener;
@@ -29,41 +34,40 @@ import org.testng.ITestResult;
  */
 public class TrackingTestNGTestListener implements ITestListener {
 
-	public int testStartCount = 0;
-	public int testSuccessCount = 0;
-	public int testFailureCount = 0;
-	public int failedConfigurationsCount = 0;
+	public final AtomicInteger testStartCount = new AtomicInteger();
 
+	public final AtomicInteger testSuccessCount = new AtomicInteger();
 
-	@Override
-	public void onFinish(ITestContext testContext) {
-		this.failedConfigurationsCount += testContext.getFailedConfigurations().size();
-	}
+	public final AtomicInteger testFailureCount = new AtomicInteger();
 
-	@Override
-	public void onStart(ITestContext testContext) {
-	}
+	public final List<Throwable> throwables = Collections.synchronizedList(new ArrayList<>());
 
-	@Override
-	public void onTestFailedButWithinSuccessPercentage(ITestResult testResult) {
-	}
+	public final AtomicInteger failedConfigurationsCount = new AtomicInteger();
 
-	@Override
-	public void onTestFailure(ITestResult testResult) {
-		this.testFailureCount++;
-	}
-
-	@Override
-	public void onTestSkipped(ITestResult testResult) {
-	}
 
 	@Override
 	public void onTestStart(ITestResult testResult) {
-		this.testStartCount++;
+		this.testStartCount.incrementAndGet();
 	}
 
 	@Override
 	public void onTestSuccess(ITestResult testResult) {
-		this.testSuccessCount++;
+		this.testSuccessCount.incrementAndGet();
 	}
+
+	@Override
+	public void onTestFailure(ITestResult testResult) {
+		this.testFailureCount.incrementAndGet();
+
+		Throwable throwable = testResult.getThrowable();
+		if (throwable != null) {
+			this.throwables.add(throwable);
+		}
+	}
+
+	@Override
+	public void onFinish(ITestContext testContext) {
+		this.failedConfigurationsCount.addAndGet(testContext.getFailedConfigurations().size());
+	}
+
 }

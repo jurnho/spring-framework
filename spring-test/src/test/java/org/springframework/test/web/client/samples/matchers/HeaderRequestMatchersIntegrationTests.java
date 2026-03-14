@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,69 +17,64 @@
 package org.springframework.test.web.client.samples.matchers;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.List;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.test.web.Person;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
-import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 /**
  * Examples of defining expectations on request headers.
  *
  * @author Rossen Stoyanchev
  */
-public class HeaderRequestMatchersIntegrationTests {
+class HeaderRequestMatchersIntegrationTests {
 
 	private static final String RESPONSE_BODY = "{\"name\" : \"Ludwig van Beethoven\", \"someDouble\" : \"1.6035\"}";
 
-	private MockRestServiceServer mockServer;
+	private final RestTemplate restTemplate = new RestTemplate();
 
-	private RestTemplate restTemplate;
+	private final MockRestServiceServer mockServer = MockRestServiceServer.createServer(this.restTemplate);
 
-	@Before
-	public void setup() {
-		List<HttpMessageConverter<?>> converters = new ArrayList<HttpMessageConverter<?>>();
-		converters.add(new StringHttpMessageConverter());
-		converters.add(new MappingJackson2HttpMessageConverter());
 
-		this.restTemplate = new RestTemplate();
-		this.restTemplate.setMessageConverters(converters);
-
-		this.mockServer = MockRestServiceServer.createServer(this.restTemplate);
+	@BeforeEach
+	void setup() {
+		this.restTemplate.setMessageConverters(
+				List.of(new StringHttpMessageConverter(), new JacksonJsonHttpMessageConverter()));
 	}
 
-	@Test
-	public void testString() throws Exception {
 
+	@Test
+	void testString() {
 		this.mockServer.expect(requestTo("/person/1"))
 			.andExpect(header("Accept", "application/json, application/*+json"))
 			.andRespond(withSuccess(RESPONSE_BODY, MediaType.APPLICATION_JSON));
 
-		this.restTemplate.getForObject(new URI("/person/1"), Person.class);
-		this.mockServer.verify();
+		executeAndVerify();
 	}
 
-	@SuppressWarnings("unchecked")
 	@Test
-	public void testStringContains() throws Exception {
-
+	void testStringContains() {
 		this.mockServer.expect(requestTo("/person/1"))
 			.andExpect(header("Accept", containsString("json")))
 			.andRespond(withSuccess(RESPONSE_BODY, MediaType.APPLICATION_JSON));
 
-		this.restTemplate.getForObject(new URI("/person/1"), Person.class);
+		executeAndVerify();
+	}
+
+	private void executeAndVerify() {
+		this.restTemplate.getForObject(URI.create("/person/1"), Person.class);
 		this.mockServer.verify();
 	}
 

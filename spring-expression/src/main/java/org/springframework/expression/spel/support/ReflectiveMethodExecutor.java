@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,80 +19,81 @@ package org.springframework.expression.spel.support;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.MethodParameter;
 import org.springframework.core.convert.TypeDescriptor;
 import org.springframework.expression.AccessException;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.MethodExecutor;
 import org.springframework.expression.TypedValue;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
 
 /**
+ * {@link MethodExecutor} that works via reflection.
+ *
  * @author Andy Clement
  * @author Juergen Hoeller
+ * @author Sam Brannen
  * @since 3.0
  */
 public class ReflectiveMethodExecutor implements MethodExecutor {
 
-	private final Method method;
+	private final Method originalMethod;
 
-	private final Integer varargsPosition;
+	/**
+	 * The method to invoke via reflection or in a compiled expression.
+	 */
+	private final Method methodToInvoke;
 
-	private boolean computedPublicDeclaringClass = false;
+	private final @Nullable Integer varargsPosition;
 
-	private Class<?> publicDeclaringClass;
+	private final @Nullable Class<?> publicDeclaringClass;
 
 	private boolean argumentConversionOccurred = false;
 
-	public ReflectiveMethodExecutor(Method method) {
-		this.method = method;
-		if (method.isVarArgs()) {
-			Class<?>[] paramTypes = method.getParameterTypes();
-			this.varargsPosition = paramTypes.length - 1;
-		}
-		else {
-			this.varargsPosition = null;
-		}
-	}
 
-	public Method getMethod() {
-		return this.method;
+	/**
+	 * Create a new executor for the given method.
+	 * @param method the method to invoke
+	 */
+	public ReflectiveMethodExecutor(Method method) {
+		this(method, null);
 	}
 
 	/**
-	 * Find the first public class in the methods declaring class hierarchy that declares this method.
-	 * Sometimes the reflective method discovery logic finds a suitable method that can easily be
-	 * called via reflection but cannot be called from generated code when compiling the expression
-	 * because of visibility restrictions. For example if a non public class overrides toString(), this
-	 * helper method will walk up the type hierarchy to find the first public type that declares the
-	 * method (if there is one!). For toString() it may walk as far as Object.
+	 * Create a new executor for the given method.
+	 * @param method the method to invoke
+	 * @param targetClass the target class to invoke the method on, or {@code null} if unknown
+	 * @since 5.3.16
 	 */
-	public Class<?> getPublicDeclaringClass() {
-		if (!computedPublicDeclaringClass) {
-			this.publicDeclaringClass = discoverPublicClass(method, method.getDeclaringClass());
-			this.computedPublicDeclaringClass = true;
-		}
-		return this.publicDeclaringClass;
+	public ReflectiveMethodExecutor(Method method, @Nullable Class<?> targetClass) {
+		this.originalMethod = method;
+		this.methodToInvoke = ClassUtils.getPubliclyAccessibleMethodIfPossible(method, targetClass);
+		Class<?> declaringClass = this.methodToInvoke.getDeclaringClass();
+		this.publicDeclaringClass = (Modifier.isPublic(declaringClass.getModifiers()) ? declaringClass : null);
+		this.varargsPosition = (method.isVarArgs() ? method.getParameterCount() - 1 : null);
 	}
 
-	private Class<?> discoverPublicClass(Method method, Class<?> clazz) {
-		if (Modifier.isPublic(clazz.getModifiers())) {
-			try {
-				clazz.getDeclaredMethod(method.getName(), method.getParameterTypes());
-				return clazz;
-			}
-			catch (NoSuchMethodException ex) {
-				// Continue below...
-			}
-		}
-		Class<?>[] ifcs = clazz.getInterfaces();
-		for (Class<?> ifc: ifcs) {
-			discoverPublicClass(method, ifc);
-		}
-		if (clazz.getSuperclass() != null) {
-			return discoverPublicClass(method, clazz.getSuperclass());
-		}
-		return null;
+
+	/**
+	 * Return the original method that this executor has been configured for.
+	 */
+	public final Method getMethod() {
+		return this.originalMethod;
+	}
+
+	/**
+	 * Get the public class or interface in the method's type hierarchy that declares the
+	 * {@linkplain #getMethod() original method}.
+	 * <p>See {@link ClassUtils#getPubliclyAccessibleMethodIfPossible(Method, Class)} for
+	 * details.
+	 * @return the public class or interface that declares the method, or {@code null} if
+	 * no such public type could be found
+	 */
+	public @Nullable Class<?> getPublicDeclaringClass() {
+		return this.publicDeclaringClass;
 	}
 
 	public boolean didArgumentConversionOccur() {
@@ -101,20 +102,20 @@ public class ReflectiveMethodExecutor implements MethodExecutor {
 
 
 	@Override
-	public TypedValue execute(EvaluationContext context, Object target, Object... arguments) throws AccessException {
+	public TypedValue execute(EvaluationContext context, Object target, @Nullable Object... arguments) throws AccessException {
 		try {
-			if (arguments != null) {
-				this.argumentConversionOccurred = ReflectionHelper.convertArguments(context.getTypeConverter(), arguments, this.method, this.varargsPosition);
+			this.argumentConversionOccurred = ReflectionHelper.convertArguments(
+					context.getTypeConverter(), arguments, this.originalMethod, this.varargsPosition);
+			if (this.originalMethod.isVarArgs()) {
+				arguments = ReflectionHelper.setupArgumentsForVarargsInvocation(
+						this.originalMethod.getParameterTypes(), arguments);
 			}
-			if (this.method.isVarArgs()) {
-				arguments = ReflectionHelper.setupArgumentsForVarargsInvocation(this.method.getParameterTypes(), arguments);
-			}
-			ReflectionUtils.makeAccessible(this.method);
-			Object value = this.method.invoke(target, arguments);
-			return new TypedValue(value, new TypeDescriptor(new MethodParameter(this.method, -1)).narrow(value));
+			ReflectionUtils.makeAccessible(this.methodToInvoke);
+			Object value = this.methodToInvoke.invoke(target, arguments);
+			return new TypedValue(value, new TypeDescriptor(new MethodParameter(this.originalMethod, -1)).narrow(value));
 		}
 		catch (Exception ex) {
-			throw new AccessException("Problem invoking method: " + this.method, ex);
+			throw new AccessException("Problem invoking method: " + this.methodToInvoke, ex);
 		}
 	}
 

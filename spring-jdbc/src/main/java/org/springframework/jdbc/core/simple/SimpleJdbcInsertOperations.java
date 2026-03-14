@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,14 +20,15 @@ import java.util.Map;
 
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.jdbc.support.nativejdbc.NativeJdbcExtractor;
 
 /**
  * Interface specifying the API for a Simple JDBC Insert implemented by {@link SimpleJdbcInsert}.
- * This interface is not often used directly, but provides the option to enhance testability,
+ *
+ * <p>This interface is not often used directly, but provides the option to enhance testability,
  * as it can easily be mocked or stubbed.
  *
  * @author Thomas Risberg
+ * @author Sam Brannen
  * @since 2.5
  */
 public interface SimpleJdbcInsertOperations {
@@ -35,74 +36,87 @@ public interface SimpleJdbcInsertOperations {
 	/**
 	 * Specify the table name to be used for the insert.
 	 * @param tableName the name of the stored table
-	 * @return the instance of this SimpleJdbcInsert
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
 	 */
 	SimpleJdbcInsertOperations withTableName(String tableName);
 
 	/**
 	 * Specify the schema name, if any, to be used for the insert.
 	 * @param schemaName the name of the schema
-	 * @return the instance of this SimpleJdbcInsert
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
 	 */
 	SimpleJdbcInsertOperations withSchemaName(String schemaName);
 
 	/**
 	 * Specify the catalog name, if any, to be used for the insert.
 	 * @param catalogName the name of the catalog
-	 * @return the instance of this SimpleJdbcInsert
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
 	 */
 	SimpleJdbcInsertOperations withCatalogName(String catalogName);
 
 	/**
 	 * Specify the column names that the insert statement should be limited to use.
 	 * @param columnNames one or more column names
-	 * @return the instance of this SimpleJdbcInsert
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
 	 */
 	SimpleJdbcInsertOperations usingColumns(String... columnNames);
 
 	/**
-	 * Specify the names of any columns that have auto generated keys.
+	 * Specify the names of any columns that have auto-generated keys.
 	 * @param columnNames one or more column names
-	 * @return the instance of this SimpleJdbcInsert
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
 	 */
 	SimpleJdbcInsertOperations usingGeneratedKeyColumns(String... columnNames);
 
 	/**
-	 * Turn off any processing of column meta data information obtained via JDBC.
-	 * @return the instance of this SimpleJdbcInsert
+	 * Specify that SQL identifiers should be quoted.
+	 * <p>If this method is invoked, the identifier quote string for the underlying
+	 * database will be used to quote SQL identifiers in generated SQL statements.
+	 * In this context, SQL identifiers refer to schema, table, and column names.
+	 * <p>When identifiers are quoted, explicit column names must be supplied via
+	 * {@link #usingColumns(String...)}. Furthermore, all identifiers for the
+	 * schema name, table name, and column names must match the corresponding
+	 * identifiers in the database's metadata regarding casing (mixed case,
+	 * uppercase, or lowercase).
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
+	 * @since 6.1
+	 * @see #withSchemaName(String)
+	 * @see #withTableName(String)
+	 * @see #usingColumns(String...)
+	 * @see java.sql.DatabaseMetaData#getIdentifierQuoteString()
+	 * @see java.sql.DatabaseMetaData#storesMixedCaseIdentifiers()
+	 * @see java.sql.DatabaseMetaData#storesMixedCaseQuotedIdentifiers()
+	 * @see java.sql.DatabaseMetaData#storesUpperCaseIdentifiers()
+	 * @see java.sql.DatabaseMetaData#storesUpperCaseQuotedIdentifiers()
+	 * @see java.sql.DatabaseMetaData#storesLowerCaseIdentifiers()
+	 * @see java.sql.DatabaseMetaData#storesLowerCaseQuotedIdentifiers()
+	 */
+	SimpleJdbcInsertOperations usingQuotedIdentifiers();
+
+	/**
+	 * Turn off any processing of column meta-data information obtained via JDBC.
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
 	 */
 	SimpleJdbcInsertOperations withoutTableColumnMetaDataAccess();
 
 	/**
-	 * Include synonyms for the column meta data lookups via JDBC.
-	 * Note: this is only necessary to include for Oracle since other
-	 * databases supporting synonyms seems to include the synonyms
-	 * automatically.
-	 * @return the instance of this SimpleJdbcInsert
+	 * Include synonyms for the column meta-data lookups via JDBC.
+	 * <p>Note: This is only necessary to include for Oracle since other databases
+	 * supporting synonyms seem to include the synonyms automatically.
+	 * @return this {@code SimpleJdbcInsert} (for method chaining)
 	 */
 	SimpleJdbcInsertOperations includeSynonymsForTableColumnMetaData();
 
 	/**
-	 * Use a the provided NativeJdbcExtractor during the column meta data
-	 * lookups via JDBC.
-	 * Note: this is only necessary to include when running with a connection pool
-	 * that wraps the meta data connection and when using a database like Oracle
-	 * where it is necessary to access the native connection to include synonyms.
-	 * @return the instance of this SimpleJdbcInsert
-	 */
-	SimpleJdbcInsertOperations useNativeJdbcExtractorForMetaData(NativeJdbcExtractor nativeJdbcExtractor);
-
-
-	/**
 	 * Execute the insert using the values passed in.
-	 * @param args Map containing column names and corresponding value
+	 * @param args a Map containing column names and corresponding value
 	 * @return the number of rows affected as returned by the JDBC driver
 	 */
 	int execute(Map<String, ?> args);
 
 	/**
 	 * Execute the insert using the values passed in.
-	 * @param parameterSource SqlParameterSource containing values to use for insert
+	 * @param parameterSource the SqlParameterSource containing values to use for insert
 	 * @return the number of rows affected as returned by the JDBC driver
 	 */
 	int execute(SqlParameterSource parameterSource);
@@ -112,7 +126,7 @@ public interface SimpleJdbcInsertOperations {
 	 * <p>This requires that the name of the columns with auto generated keys have been specified.
 	 * This method will always return a KeyHolder but the caller must verify that it actually
 	 * contains the generated keys.
-	 * @param args Map containing column names and corresponding value
+	 * @param args a Map containing column names and corresponding value
 	 * @return the generated key value
 	 */
 	Number executeAndReturnKey(Map<String, ?> args);
@@ -122,7 +136,7 @@ public interface SimpleJdbcInsertOperations {
 	 * <p>This requires that the name of the columns with auto generated keys have been specified.
 	 * This method will always return a KeyHolder but the caller must verify that it actually
 	 * contains the generated keys.
-	 * @param parameterSource SqlParameterSource containing values to use for insert
+	 * @param parameterSource the SqlParameterSource containing values to use for insert
 	 * @return the generated key value.
 	 */
 	Number executeAndReturnKey(SqlParameterSource parameterSource);
@@ -132,7 +146,7 @@ public interface SimpleJdbcInsertOperations {
 	 * <p>This requires that the name of the columns with auto generated keys have been specified.
 	 * This method will always return a KeyHolder but the caller must verify that it actually
 	 * contains the generated keys.
-	 * @param args Map containing column names and corresponding value
+	 * @param args a Map containing column names and corresponding value
 	 * @return the KeyHolder containing all generated keys
 	 */
 	KeyHolder executeAndReturnKeyHolder(Map<String, ?> args);
@@ -142,7 +156,7 @@ public interface SimpleJdbcInsertOperations {
 	 * <p>This requires that the name of the columns with auto generated keys have been specified.
 	 * This method will always return a KeyHolder but the caller must verify that it actually
 	 * contains the generated keys.
-	 * @param parameterSource SqlParameterSource containing values to use for insert
+	 * @param parameterSource the SqlParameterSource containing values to use for insert
 	 * @return the KeyHolder containing all generated keys
 	 */
 	KeyHolder executeAndReturnKeyHolder(SqlParameterSource parameterSource);
@@ -152,6 +166,7 @@ public interface SimpleJdbcInsertOperations {
 	 * @param batch an array of Maps containing a batch of column names and corresponding value
 	 * @return the array of number of rows affected as returned by the JDBC driver
 	 */
+	@SuppressWarnings("unchecked")
 	int[] executeBatch(Map<String, ?>... batch);
 
 	/**

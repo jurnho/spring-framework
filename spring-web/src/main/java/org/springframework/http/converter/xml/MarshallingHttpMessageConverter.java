@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,19 +16,16 @@
 
 package org.springframework.http.converter.xml;
 
-import java.io.IOException;
 import javax.xml.transform.Result;
 import javax.xml.transform.Source;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.oxm.Marshaller;
-import org.springframework.oxm.MarshallingFailureException;
 import org.springframework.oxm.Unmarshaller;
-import org.springframework.oxm.UnmarshallingFailureException;
 import org.springframework.util.Assert;
 
 /**
@@ -47,9 +44,9 @@ import org.springframework.util.Assert;
  */
 public class MarshallingHttpMessageConverter extends AbstractXmlHttpMessageConverter<Object> {
 
-	private Marshaller marshaller;
+	private @Nullable Marshaller marshaller;
 
-	private Unmarshaller unmarshaller;
+	private @Nullable Unmarshaller unmarshaller;
 
 
 	/**
@@ -71,8 +68,10 @@ public class MarshallingHttpMessageConverter extends AbstractXmlHttpMessageConve
 	public MarshallingHttpMessageConverter(Marshaller marshaller) {
 		Assert.notNull(marshaller, "Marshaller must not be null");
 		this.marshaller = marshaller;
-		if (marshaller instanceof Unmarshaller) {
-			this.unmarshaller = (Unmarshaller) marshaller;
+		// The following pattern variable cannot be named "unmarshaller" due to lacking
+		// support in Checkstyle: https://github.com/checkstyle/checkstyle/issues/10969
+		if (marshaller instanceof Unmarshaller _unmarshaller) {
+			this.unmarshaller = _unmarshaller;
 		}
 	}
 
@@ -106,12 +105,12 @@ public class MarshallingHttpMessageConverter extends AbstractXmlHttpMessageConve
 
 
 	@Override
-	public boolean canRead(Class<?> clazz, MediaType mediaType) {
+	public boolean canRead(Class<?> clazz, @Nullable MediaType mediaType) {
 		return (canRead(mediaType) && this.unmarshaller != null && this.unmarshaller.supports(clazz));
 	}
 
 	@Override
-	public boolean canWrite(Class<?> clazz, MediaType mediaType) {
+	public boolean canWrite(Class<?> clazz, @Nullable MediaType mediaType) {
 		return (canWrite(mediaType) && this.marshaller != null && this.marshaller.supports(clazz));
 	}
 
@@ -122,28 +121,23 @@ public class MarshallingHttpMessageConverter extends AbstractXmlHttpMessageConve
 	}
 
 	@Override
-	protected Object readFromSource(Class<?> clazz, HttpHeaders headers, Source source) throws IOException {
-		Assert.notNull(this.unmarshaller, "Property 'unmarshaller' is required");
-		try {
-			Object result = this.unmarshaller.unmarshal(source);
-			if (!clazz.isInstance(result)) {
-				throw new TypeMismatchException(result, clazz);
-			}
-			return result;
+	protected Object readFromSource(Class<?> clazz, HttpHeaders headers, Source source) throws Exception {
+		Assert.state(this.unmarshaller != null, "Property 'unmarshaller' is required");
+		Object result = this.unmarshaller.unmarshal(source);
+		if (!clazz.isInstance(result)) {
+			throw new TypeMismatchException(result, clazz);
 		}
-		catch (UnmarshallingFailureException ex) {
-			throw new HttpMessageNotReadableException("Could not read [" + clazz + "]", ex);
-		}
+		return result;
 	}
 
 	@Override
-	protected void writeToResult(Object o, HttpHeaders headers, Result result) throws IOException {
-		Assert.notNull(this.marshaller, "Property 'marshaller' is required");
-		try {
-			this.marshaller.marshal(o, result);
-		}
-		catch (MarshallingFailureException ex) {
-			throw new HttpMessageNotWritableException("Could not write [" + o + "]", ex);
-		}
+	protected void writeToResult(Object o, HttpHeaders headers, Result result) throws Exception {
+		Assert.state(this.marshaller != null, "Property 'marshaller' is required");
+		this.marshaller.marshal(o, result);
+	}
+
+	@Override
+	protected boolean supportsRepeatableWrites(Object o) {
+		return true;
 	}
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,33 +17,40 @@
 package org.springframework.web.servlet.mvc.method.annotation;
 
 import java.io.IOException;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.util.Assert;
+import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
+import org.springframework.web.servlet.ModelAndView;
 
 /**
  * A specialization of {@link ResponseBodyEmitter} for sending
- * <a href="http://www.w3.org/TR/eventsource/">Server-Sent Events</a>.
+ * <a href="https://html.spec.whatwg.org/multipage/server-sent-events.html">Server-Sent Events</a>.
  *
  * @author Rossen Stoyanchev
  * @author Juergen Hoeller
+ * @author Sam Brannen
+ * @author Brian Clozel
  * @since 4.2
  */
 public class SseEmitter extends ResponseBodyEmitter {
 
-	static final MediaType TEXT_PLAIN = new MediaType("text", "plain", Charset.forName("UTF-8"));
+	private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
 
 	/**
 	 * Create a new SseEmitter instance.
 	 */
 	public SseEmitter() {
-		super();
 	}
 
 	/**
@@ -51,7 +58,7 @@ public class SseEmitter extends ResponseBodyEmitter {
 	 * <p>By default not set in which case the default configured in the MVC
 	 * Java Config or the MVC namespace is used, or if that's not set, then the
 	 * timeout depends on the default of the underlying server.
-	 * @param timeout timeout value in milliseconds
+	 * @param timeout the timeout value in milliseconds
 	 * @since 4.2.2
 	 */
 	public SseEmitter(Long timeout) {
@@ -65,7 +72,7 @@ public class SseEmitter extends ResponseBodyEmitter {
 
 		HttpHeaders headers = outputMessage.getHeaders();
 		if (headers.getContentType() == null) {
-			headers.setContentType(new MediaType("text", "event-stream"));
+			headers.setContentType(MediaType.TEXT_EVENT_STREAM);
 		}
 	}
 
@@ -77,6 +84,8 @@ public class SseEmitter extends ResponseBodyEmitter {
 	 * SseEmitter emitter = new SseEmitter();
 	 * emitter.send(event().data(myObject));
 	 * </pre>
+	 * <p>Please, see {@link ResponseBodyEmitter#send(Object) parent Javadoc}
+	 * for important notes on exception handling.
 	 * @param object the object to write
 	 * @throws IOException raised when an I/O error occurs
 	 * @throws java.lang.IllegalStateException wraps any other errors
@@ -94,22 +103,21 @@ public class SseEmitter extends ResponseBodyEmitter {
 	 * SseEmitter emitter = new SseEmitter();
 	 * emitter.send(event().data(myObject, MediaType.APPLICATION_JSON));
 	 * </pre>
+	 * <p>Please, see {@link ResponseBodyEmitter#send(Object) parent Javadoc}
+	 * for important notes on exception handling.
 	 * @param object the object to write
 	 * @param mediaType a MediaType hint for selecting an HttpMessageConverter
 	 * @throws IOException raised when an I/O error occurs
 	 */
 	@Override
-	public void send(Object object, MediaType mediaType) throws IOException {
-		if (object != null) {
-			send(event().data(object, mediaType));
-		}
+	public void send(Object object, @Nullable MediaType mediaType) throws IOException {
+		send(event().data(object, mediaType));
 	}
 
 	/**
 	 * Send an SSE event prepared with the given builder. For example:
 	 * <pre>
 	 * // static import of SseEmitter
-	 *
 	 * SseEmitter emitter = new SseEmitter();
 	 * emitter.send(event().name("update").id("1").data(myObject));
 	 * </pre>
@@ -118,11 +126,18 @@ public class SseEmitter extends ResponseBodyEmitter {
 	 */
 	public void send(SseEventBuilder builder) throws IOException {
 		Set<DataWithMediaType> dataToSend = builder.build();
-		synchronized (this) {
-			for (DataWithMediaType entry : dataToSend) {
-				super.send(entry.getData(), entry.getMediaType());
-			}
+		this.writeLock.lock();
+		try {
+			super.send(dataToSend);
 		}
+		finally {
+			this.writeLock.unlock();
+		}
+	}
+
+	@Override
+	public String toString() {
+		return "SseEmitter@" + ObjectUtils.getIdentityHexString(this);
 	}
 
 
@@ -137,16 +152,6 @@ public class SseEmitter extends ResponseBodyEmitter {
 	public interface SseEventBuilder {
 
 		/**
-		 * Add an SSE "comment" line.
-		 */
-		SseEventBuilder comment(String comment);
-
-		/**
-		 * Add an SSE "event" line.
-		 */
-		SseEventBuilder name(String eventName);
-
-		/**
 		 * Add an SSE "id" line.
 		 */
 		SseEventBuilder id(String id);
@@ -154,7 +159,17 @@ public class SseEmitter extends ResponseBodyEmitter {
 		/**
 		 * Add an SSE "event" line.
 		 */
+		SseEventBuilder name(String eventName);
+
+		/**
+		 * Add an SSE "retry" line.
+		 */
 		SseEventBuilder reconnectTime(long reconnectTimeMillis);
+
+		/**
+		 * Add an SSE "comment" line.
+		 */
+		SseEventBuilder comment(String comment);
 
 		/**
 		 * Add an SSE "data" line.
@@ -164,10 +179,10 @@ public class SseEmitter extends ResponseBodyEmitter {
 		/**
 		 * Add an SSE "data" line.
 		 */
-		SseEventBuilder data(Object object, MediaType mediaType);
+		SseEventBuilder data(Object object, @Nullable MediaType mediaType);
 
 		/**
-		 * Return one or more Object-MediaType  pairs to write via
+		 * Return one or more Object-MediaType pairs to write via
 		 * {@link #send(Object, MediaType)}.
 		 * @since 4.2.3
 		 */
@@ -180,31 +195,36 @@ public class SseEmitter extends ResponseBodyEmitter {
 	 */
 	private static class SseEventBuilderImpl implements SseEventBuilder {
 
-		private final Set<DataWithMediaType> dataToSend = new LinkedHashSet<DataWithMediaType>(4);
+		private final Set<DataWithMediaType> dataToSend = new LinkedHashSet<>(4);
 
-		private StringBuilder sb;
+		private final StringBuilder sb = new StringBuilder();
+
+		private boolean hasName;
 
 		@Override
-		public SseEventBuilder comment(String comment) {
-			append(":").append(comment != null ? comment : "").append("\n");
+		public SseEventBuilder id(String id) {
+			checkEvent(id);
+			append("id:").append(id).append('\n');
 			return this;
 		}
 
 		@Override
 		public SseEventBuilder name(String name) {
-			append("event:").append(name != null ? name : "").append("\n");
-			return this;
-		}
-
-		@Override
-		public SseEventBuilder id(String id) {
-			append("id:").append(id != null ? id : "").append("\n");
+			checkEvent(name);
+			this.hasName = true;
+			append("event:").append(name).append('\n');
 			return this;
 		}
 
 		@Override
 		public SseEventBuilder reconnectTime(long reconnectTimeMillis) {
-			append("retry:").append(String.valueOf(reconnectTimeMillis)).append("\n");
+			append("retry:").append(String.valueOf(reconnectTimeMillis)).append('\n');
+			return this;
+		}
+
+		@Override
+		public SseEventBuilder comment(String comment) {
+			append(':').append(StringUtils.replace(comment, "\n", "\n:")).append('\n');
 			return this;
 		}
 
@@ -214,36 +234,76 @@ public class SseEmitter extends ResponseBodyEmitter {
 		}
 
 		@Override
-		public SseEventBuilder data(Object object, MediaType mediaType) {
+		public SseEventBuilder data(Object object, @Nullable MediaType mediaType) {
+			if (object instanceof ModelAndView mav && !this.hasName && mav.getViewName() != null) {
+				name(mav.getViewName());
+			}
 			append("data:");
-			saveAppendedText();
-			this.dataToSend.add(new DataWithMediaType(object, mediaType));
-			append("\n");
+			saveAppendedText(TEXT_PLAIN);
+			if (object instanceof String text) {
+				writeStringData(text, mediaType);
+			}
+			else {
+				this.dataToSend.add(new DataWithMediaType(object, mediaType));
+			}
+			append('\n');
 			return this;
 		}
 
-		SseEventBuilderImpl append(String text) {
-			if (this.sb == null) {
-				this.sb = new StringBuilder();
+		private static void checkEvent(String content) {
+			Assert.isTrue(content.indexOf('\n') == -1 && content.indexOf('\r') == -1,
+					"illegal character '\\n' or '\\r' in event content");
+		}
+
+		private void writeStringData(String input, @Nullable MediaType mediaType) {
+			if (input.indexOf('\n') == -1 && input.indexOf('\r') == -1) {
+				this.dataToSend.add(new DataWithMediaType(input, mediaType));
 			}
+			else {
+				int length = input.length();
+				for (int i = 0; i < length; i++) {
+					char c = input.charAt(i);
+					if (c == '\r') {
+						if (i + 1 < length && input.charAt(i + 1) == '\n') {
+							i++;
+						}
+						this.sb.append("\ndata:");
+					}
+					else if (c == '\n') {
+						this.sb.append("\ndata:");
+					}
+					else {
+						this.sb.append(c);
+					}
+				}
+				saveAppendedText(mediaType);
+			}
+		}
+
+		SseEventBuilderImpl append(String text) {
 			this.sb.append(text);
+			return this;
+		}
+
+		SseEventBuilderImpl append(char ch) {
+			this.sb.append(ch);
 			return this;
 		}
 
 		@Override
 		public Set<DataWithMediaType> build() {
-			if ((this.sb == null || this.sb.length() == 0) && this.dataToSend.isEmpty()) {
-				return Collections.<DataWithMediaType>emptySet();
+			if (!StringUtils.hasLength(this.sb) && this.dataToSend.isEmpty()) {
+				return Collections.emptySet();
 			}
-			append("\n");
-			saveAppendedText();
+			append('\n');
+			saveAppendedText(TEXT_PLAIN);
 			return this.dataToSend;
 		}
 
-		private void saveAppendedText() {
-			if (this.sb != null) {
-				this.dataToSend.add(new DataWithMediaType(this.sb.toString(), TEXT_PLAIN));
-				this.sb = null;
+		private void saveAppendedText(@Nullable MediaType mediaType) {
+			if (StringUtils.hasLength(this.sb)) {
+				this.dataToSend.add(new DataWithMediaType(this.sb.toString(), mediaType));
+				this.sb.setLength(0);
 			}
 		}
 	}

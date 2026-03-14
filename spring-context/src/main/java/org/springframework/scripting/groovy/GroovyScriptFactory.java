@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,12 +17,17 @@
 package org.springframework.scripting.groovy;
 
 import java.io.IOException;
+import java.lang.reflect.InaccessibleObjectException;
+import java.lang.reflect.InvocationTargetException;
 
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyObject;
 import groovy.lang.MetaClass;
 import groovy.lang.Script;
 import org.codehaus.groovy.control.CompilationFailedException;
+import org.codehaus.groovy.control.CompilerConfiguration;
+import org.codehaus.groovy.control.customizers.CompilationCustomizer;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.BeanFactory;
@@ -33,6 +38,8 @@ import org.springframework.scripting.ScriptFactory;
 import org.springframework.scripting.ScriptSource;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
+import org.springframework.util.ObjectUtils;
+import org.springframework.util.ReflectionUtils;
 
 /**
  * {@link org.springframework.scripting.ScriptFactory} implementation
@@ -40,7 +47,7 @@ import org.springframework.util.ClassUtils;
  *
  * <p>Typically used in combination with a
  * {@link org.springframework.scripting.support.ScriptFactoryPostProcessor};
- * see the latter's javadoc} for a configuration example.
+ * see the latter's javadoc for a configuration example.
  *
  * <p>Note: Spring 4.0 supports Groovy 1.8 and higher.
  *
@@ -55,15 +62,17 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 
 	private final String scriptSourceLocator;
 
-	private final GroovyObjectCustomizer groovyObjectCustomizer;
+	private @Nullable GroovyObjectCustomizer groovyObjectCustomizer;
 
-	private GroovyClassLoader groovyClassLoader;
+	private @Nullable CompilerConfiguration compilerConfiguration;
 
-	private Class<?> scriptClass;
+	private @Nullable GroovyClassLoader groovyClassLoader;
 
-	private Class<?> scriptResultClass;
+	private @Nullable Class<?> scriptClass;
 
-	private CachedResultHolder cachedResult;
+	private @Nullable Class<?> scriptResultClass;
+
+	private @Nullable CachedResultHolder cachedResult;
 
 	private final Object scriptClassMonitor = new Object();
 
@@ -78,38 +87,79 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 	 * Interpreted by the post-processor that actually creates the script.
 	 */
 	public GroovyScriptFactory(String scriptSourceLocator) {
-		this(scriptSourceLocator, null);
+		Assert.hasText(scriptSourceLocator, "'scriptSourceLocator' must not be empty");
+		this.scriptSourceLocator = scriptSourceLocator;
 	}
 
 	/**
 	 * Create a new GroovyScriptFactory for the given script source,
 	 * specifying a strategy interface that can create a custom MetaClass
 	 * to supply missing methods and otherwise change the behavior of the object.
-	 * <p>We don't need to specify script interfaces here, since
-	 * a Groovy script defines its Java interfaces itself.
 	 * @param scriptSourceLocator a locator that points to the source of the script.
 	 * Interpreted by the post-processor that actually creates the script.
 	 * @param groovyObjectCustomizer a customizer that can set a custom metaclass
 	 * or make other changes to the GroovyObject created by this factory
 	 * (may be {@code null})
+	 * @see GroovyObjectCustomizer#customize
 	 */
-	public GroovyScriptFactory(String scriptSourceLocator, GroovyObjectCustomizer groovyObjectCustomizer) {
-		Assert.hasText(scriptSourceLocator, "'scriptSourceLocator' must not be empty");
-		this.scriptSourceLocator = scriptSourceLocator;
+	public GroovyScriptFactory(String scriptSourceLocator, @Nullable GroovyObjectCustomizer groovyObjectCustomizer) {
+		this(scriptSourceLocator);
 		this.groovyObjectCustomizer = groovyObjectCustomizer;
+	}
+
+	/**
+	 * Create a new GroovyScriptFactory for the given script source,
+	 * specifying a strategy interface that can create a custom MetaClass
+	 * to supply missing methods and otherwise change the behavior of the object.
+	 * @param scriptSourceLocator a locator that points to the source of the script.
+	 * Interpreted by the post-processor that actually creates the script.
+	 * @param compilerConfiguration a custom compiler configuration to be applied
+	 * to the GroovyClassLoader (may be {@code null})
+	 * @since 4.3.3
+	 * @see GroovyClassLoader#GroovyClassLoader(ClassLoader, CompilerConfiguration)
+	 */
+	public GroovyScriptFactory(String scriptSourceLocator, @Nullable CompilerConfiguration compilerConfiguration) {
+		this(scriptSourceLocator);
+		this.compilerConfiguration = compilerConfiguration;
+	}
+
+	/**
+	 * Create a new GroovyScriptFactory for the given script source,
+	 * specifying a strategy interface that can customize Groovy's compilation
+	 * process within the underlying GroovyClassLoader.
+	 * @param scriptSourceLocator a locator that points to the source of the script.
+	 * Interpreted by the post-processor that actually creates the script.
+	 * @param compilationCustomizers one or more customizers to be applied to the
+	 * GroovyClassLoader compiler configuration
+	 * @since 4.3.3
+	 * @see CompilerConfiguration#addCompilationCustomizers
+	 * @see org.codehaus.groovy.control.customizers.ImportCustomizer
+	 */
+	public GroovyScriptFactory(String scriptSourceLocator, CompilationCustomizer... compilationCustomizers) {
+		this(scriptSourceLocator);
+		if (!ObjectUtils.isEmpty(compilationCustomizers)) {
+			this.compilerConfiguration = new CompilerConfiguration();
+			this.compilerConfiguration.addCompilationCustomizers(compilationCustomizers);
+		}
 	}
 
 
 	@Override
 	public void setBeanFactory(BeanFactory beanFactory) {
-		if (beanFactory instanceof ConfigurableListableBeanFactory) {
-			((ConfigurableListableBeanFactory) beanFactory).ignoreDependencyType(MetaClass.class);
+		if (beanFactory instanceof ConfigurableListableBeanFactory clbf) {
+			clbf.ignoreDependencyType(MetaClass.class);
 		}
 	}
 
 	@Override
 	public void setBeanClassLoader(ClassLoader classLoader) {
-		this.groovyClassLoader = new GroovyClassLoader(classLoader);
+		if (classLoader instanceof GroovyClassLoader gcl && (this.compilerConfiguration == null ||
+				gcl.hasCompatibleConfiguration(this.compilerConfiguration))) {
+			this.groovyClassLoader = gcl;
+		}
+		else {
+			this.groovyClassLoader = buildGroovyClassLoader(classLoader);
+		}
 	}
 
 	/**
@@ -118,10 +168,20 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 	public GroovyClassLoader getGroovyClassLoader() {
 		synchronized (this.scriptClassMonitor) {
 			if (this.groovyClassLoader == null) {
-				this.groovyClassLoader = new GroovyClassLoader(ClassUtils.getDefaultClassLoader());
+				this.groovyClassLoader = buildGroovyClassLoader(ClassUtils.getDefaultClassLoader());
 			}
 			return this.groovyClassLoader;
 		}
+	}
+
+	/**
+	 * Build a {@link GroovyClassLoader} for the given {@code ClassLoader}.
+	 * @param classLoader the ClassLoader to build a GroovyClassLoader for
+	 * @since 4.3.3
+	 */
+	protected GroovyClassLoader buildGroovyClassLoader(@Nullable ClassLoader classLoader) {
+		return (this.compilerConfiguration != null ?
+				new GroovyClassLoader(classLoader, this.compilerConfiguration) : new GroovyClassLoader(classLoader));
 	}
 
 
@@ -136,7 +196,7 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 	 * @return {@code null} always
 	 */
 	@Override
-	public Class<?>[] getScriptInterfaces() {
+	public Class<?> @Nullable [] getScriptInterfaces() {
 		return null;
 	}
 
@@ -155,7 +215,7 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 	 * @see groovy.lang.GroovyClassLoader
 	 */
 	@Override
-	public Object getScriptedObject(ScriptSource scriptSource, Class<?>... actualInterfaces)
+	public @Nullable Object getScriptedObject(ScriptSource scriptSource, Class<?> @Nullable ... actualInterfaces)
 			throws IOException, ScriptCompilationException {
 
 		synchronized (this.scriptClassMonitor) {
@@ -186,7 +246,7 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 				}
 				scriptClassToExecute = this.scriptClass;
 
-				// Process re-execution outside of the synchronized block.
+				// Process re-execution outside the synchronized block.
 				return executeScript(scriptSource, scriptClassToExecute);
 			}
 			catch (CompilationFailedException ex) {
@@ -198,7 +258,7 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 	}
 
 	@Override
-	public Class<?> getScriptedObjectType(ScriptSource scriptSource)
+	public @Nullable Class<?> getScriptedObjectType(ScriptSource scriptSource)
 			throws IOException, ScriptCompilationException {
 
 		synchronized (this.scriptClassMonitor) {
@@ -246,31 +306,39 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 	 * or the result of running the script instance)
 	 * @throws ScriptCompilationException in case of instantiation failure
 	 */
-	protected Object executeScript(ScriptSource scriptSource, Class<?> scriptClass) throws ScriptCompilationException {
+	protected @Nullable Object executeScript(ScriptSource scriptSource, Class<?> scriptClass) throws ScriptCompilationException {
 		try {
-			GroovyObject goo = (GroovyObject) scriptClass.newInstance();
+			GroovyObject groovyObj = (GroovyObject) ReflectionUtils.accessibleConstructor(scriptClass).newInstance();
 
 			if (this.groovyObjectCustomizer != null) {
 				// Allow metaclass and other customization.
-				this.groovyObjectCustomizer.customize(goo);
+				this.groovyObjectCustomizer.customize(groovyObj);
 			}
 
-			if (goo instanceof Script) {
+			if (groovyObj instanceof Script script) {
 				// A Groovy script, probably creating an instance: let's execute it.
-				return ((Script) goo).run();
+				return script.run();
 			}
 			else {
 				// An instance of the scripted class: let's return it as-is.
-				return goo;
+				return groovyObj;
 			}
+		}
+		catch (NoSuchMethodException ex) {
+			throw new ScriptCompilationException(
+					"No default constructor on Groovy script class: " + scriptClass.getName(), ex);
 		}
 		catch (InstantiationException ex) {
 			throw new ScriptCompilationException(
-					scriptSource, "Could not instantiate Groovy script class: " + scriptClass.getName(), ex);
+					scriptSource, "Unable to instantiate Groovy script class: " + scriptClass.getName(), ex);
 		}
-		catch (IllegalAccessException ex) {
+		catch (IllegalAccessException | InaccessibleObjectException ex) {
 			throw new ScriptCompilationException(
 					scriptSource, "Could not access Groovy script constructor: " + scriptClass.getName(), ex);
+		}
+		catch (InvocationTargetException ex) {
+			throw new ScriptCompilationException(
+					"Failed to invoke Groovy script constructor: " + scriptClass.getName(), ex.getTargetException());
 		}
 	}
 
@@ -286,9 +354,9 @@ public class GroovyScriptFactory implements ScriptFactory, BeanFactoryAware, Bea
 	 */
 	private static class CachedResultHolder {
 
-		public final Object object;
+		public final @Nullable Object object;
 
-		public CachedResultHolder(Object object) {
+		public CachedResultHolder(@Nullable Object object) {
 			this.object = object;
 		}
 	}

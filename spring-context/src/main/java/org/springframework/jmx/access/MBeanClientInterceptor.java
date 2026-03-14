@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,8 +23,10 @@ import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+
 import javax.management.Attribute;
 import javax.management.InstanceNotFoundException;
 import javax.management.IntrospectionException;
@@ -51,17 +53,20 @@ import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.core.CollectionFactory;
-import org.springframework.core.GenericCollectionTypeResolver;
 import org.springframework.core.MethodParameter;
+import org.springframework.core.ResolvableType;
 import org.springframework.jmx.support.JmxUtils;
 import org.springframework.jmx.support.ObjectNameManager;
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 
@@ -89,40 +94,40 @@ import org.springframework.util.StringUtils;
 public class MBeanClientInterceptor
 		implements MethodInterceptor, BeanClassLoaderAware, InitializingBean, DisposableBean {
 
-	/** Logger available to subclasses */
+	/** Logger available to subclasses. */
 	protected final Log logger = LogFactory.getLog(getClass());
 
-	private MBeanServerConnection server;
+	private @Nullable MBeanServerConnection server;
 
-	private JMXServiceURL serviceUrl;
+	private @Nullable JMXServiceURL serviceUrl;
 
-	private Map<String, ?> environment;
+	private @Nullable Map<String, ?> environment;
 
-	private String agentId;
+	private @Nullable String agentId;
 
 	private boolean connectOnStartup = true;
 
 	private boolean refreshOnConnectFailure = false;
 
-	private ObjectName objectName;
+	private @Nullable ObjectName objectName;
 
 	private boolean useStrictCasing = true;
 
-	private Class<?> managementInterface;
+	private @Nullable Class<?> managementInterface;
 
-	private ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
+	private @Nullable ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
 
 	private final ConnectorDelegate connector = new ConnectorDelegate();
 
-	private MBeanServerConnection serverToUse;
+	private @Nullable MBeanServerConnection serverToUse;
 
-	private MBeanServerInvocationHandler invocationHandler;
+	private @Nullable MBeanServerInvocationHandler invocationHandler;
 
-	private Map<String, MBeanAttributeInfo> allowedAttributes;
+	private Map<String, MBeanAttributeInfo> allowedAttributes = Collections.emptyMap();
 
-	private Map<MethodCacheKey, MBeanOperationInfo> allowedOperations;
+	private Map<MethodCacheKey, MBeanOperationInfo> allowedOperations = Collections.emptyMap();
 
-	private final Map<Method, String[]> signatureCache = new HashMap<Method, String[]>();
+	private final Map<Method, String[]> signatureCache = new HashMap<>();
 
 	private final Object preparationMonitor = new Object();
 
@@ -146,18 +151,18 @@ public class MBeanClientInterceptor
 	 * Specify the environment for the JMX connector.
 	 * @see javax.management.remote.JMXConnectorFactory#connect(javax.management.remote.JMXServiceURL, java.util.Map)
 	 */
-	public void setEnvironment(Map<String, ?> environment) {
+	public void setEnvironment(@Nullable Map<String, ?> environment) {
 		this.environment = environment;
 	}
 
 	/**
-	 * Allow Map access to the environment to be set for the connector,
+	 * Allow {@code Map} access to the environment to be set for the connector,
 	 * with the option to add or override specific entries.
 	 * <p>Useful for specifying entries directly, for example via
-	 * "environment[myKey]". This is particularly useful for
+	 * {@code environment[myKey]}. This is particularly useful for
 	 * adding or overriding entries in child bean definitions.
 	 */
-	public Map<String, ?> getEnvironment() {
+	public @Nullable Map<String, ?> getEnvironment() {
 		return this.environment;
 	}
 
@@ -174,9 +179,9 @@ public class MBeanClientInterceptor
 	}
 
 	/**
-	 * Set whether or not the proxy should connect to the {@code MBeanServer}
-	 * at creation time ("true") or the first time it is invoked ("false").
-	 * Default is "true".
+	 * Set whether the proxy should connect to the {@code MBeanServer}
+	 * at creation time ({@code true}) or the first time it is invoked
+	 * ({@code false}). Default is {@code true}.
 	 */
 	public void setConnectOnStartup(boolean connectOnStartup) {
 		this.connectOnStartup = connectOnStartup;
@@ -184,7 +189,7 @@ public class MBeanClientInterceptor
 
 	/**
 	 * Set whether to refresh the MBeanServer connection on connect failure.
-	 * Default is "false".
+	 * Default is {@code false}.
 	 * <p>Can be turned on to allow for hot restart of the JMX server,
 	 * automatically reconnecting and retrying in case of an IOException.
 	 */
@@ -216,7 +221,7 @@ public class MBeanClientInterceptor
 	 * setters and getters for MBean attributes and conventional Java methods
 	 * for MBean operations.
 	 */
-	public void setManagementInterface(Class<?> managementInterface) {
+	public void setManagementInterface(@Nullable Class<?> managementInterface) {
 		this.managementInterface = managementInterface;
 	}
 
@@ -224,7 +229,7 @@ public class MBeanClientInterceptor
 	 * Return the management interface of the target MBean,
 	 * or {@code null} if none specified.
 	 */
-	protected final Class<?> getManagementInterface() {
+	protected final @Nullable Class<?> getManagementInterface() {
 		return this.managementInterface;
 	}
 
@@ -264,6 +269,7 @@ public class MBeanClientInterceptor
 			}
 			this.invocationHandler = null;
 			if (this.useStrictCasing) {
+				Assert.state(this.objectName != null, "No ObjectName set");
 				// Use the JDK's own MBeanServerInvocationHandler, in particular for native MXBean support.
 				this.invocationHandler = new MBeanServerInvocationHandler(this.serverToUse, this.objectName,
 						(this.managementInterface != null && JMX.isMXBeanInterface(this.managementInterface)));
@@ -271,7 +277,7 @@ public class MBeanClientInterceptor
 			else {
 				// Non-strict casing can only be achieved through custom invocation handling.
 				// Only partial MXBean support available!
-				retrieveMBeanInfo();
+				retrieveMBeanInfo(this.serverToUse);
 			}
 		}
 	}
@@ -280,18 +286,18 @@ public class MBeanClientInterceptor
 	 * This information is used by the proxy when determining whether an invocation matches
 	 * a valid operation or attribute on the management interface of the managed resource.
 	 */
-	private void retrieveMBeanInfo() throws MBeanInfoRetrievalException {
+	private void retrieveMBeanInfo(MBeanServerConnection server) throws MBeanInfoRetrievalException {
 		try {
-			MBeanInfo info = this.serverToUse.getMBeanInfo(this.objectName);
+			MBeanInfo info = server.getMBeanInfo(this.objectName);
 
 			MBeanAttributeInfo[] attributeInfo = info.getAttributes();
-			this.allowedAttributes = new HashMap<String, MBeanAttributeInfo>(attributeInfo.length);
+			this.allowedAttributes = CollectionUtils.newHashMap(attributeInfo.length);
 			for (MBeanAttributeInfo infoEle : attributeInfo) {
 				this.allowedAttributes.put(infoEle.getName(), infoEle);
 			}
 
 			MBeanOperationInfo[] operationInfo = info.getOperations();
-			this.allowedOperations = new HashMap<MethodCacheKey, MBeanOperationInfo>(operationInfo.length);
+			this.allowedOperations = CollectionUtils.newHashMap(operationInfo.length);
 			for (MBeanOperationInfo infoEle : operationInfo) {
 				Class<?>[] paramTypes = JmxUtils.parameterInfoToTypes(infoEle.getSignature(), this.beanClassLoader);
 				this.allowedOperations.put(new MethodCacheKey(infoEle.getName(), paramTypes), infoEle);
@@ -331,7 +337,7 @@ public class MBeanClientInterceptor
 
 
 	/**
-	 * Route the invocation to the configured managed resource..
+	 * Route the invocation to the configured managed resource.
 	 * @param invocation the {@code MethodInvocation} to re-route
 	 * @return the value returned as a result of the re-routed invocation
 	 * @throws Throwable an invocation error propagated to the user
@@ -339,7 +345,7 @@ public class MBeanClientInterceptor
 	 * @see #handleConnectFailure
 	 */
 	@Override
-	public Object invoke(MethodInvocation invocation) throws Throwable {
+	public @Nullable Object invoke(MethodInvocation invocation) throws Throwable {
 		// Lazily connect to MBeanServer if necessary.
 		synchronized (this.preparationMonitor) {
 			if (!isPrepared()) {
@@ -349,10 +355,7 @@ public class MBeanClientInterceptor
 		try {
 			return doInvoke(invocation);
 		}
-		catch (MBeanConnectFailureException ex) {
-			return handleConnectFailure(invocation, ex);
-		}
-		catch (IOException ex) {
+		catch (MBeanConnectFailureException | IOException ex) {
 			return handleConnectFailure(invocation, ex);
 		}
 	}
@@ -369,7 +372,7 @@ public class MBeanClientInterceptor
 	 * @see #setRefreshOnConnectFailure
 	 * @see #doInvoke
 	 */
-	protected Object handleConnectFailure(MethodInvocation invocation, Exception ex) throws Throwable {
+	protected @Nullable Object handleConnectFailure(MethodInvocation invocation, Exception ex) throws Throwable {
 		if (this.refreshOnConnectFailure) {
 			String msg = "Could not connect to JMX server - retrying";
 			if (logger.isDebugEnabled()) {
@@ -394,10 +397,10 @@ public class MBeanClientInterceptor
 	 * @return the value returned as a result of the re-routed invocation
 	 * @throws Throwable an invocation error propagated to the user
 	 */
-	protected Object doInvoke(MethodInvocation invocation) throws Throwable {
+	protected @Nullable Object doInvoke(MethodInvocation invocation) throws Throwable {
 		Method method = invocation.getMethod();
 		try {
-			Object result = null;
+			Object result;
 			if (this.invocationHandler != null) {
 				result = this.invocationHandler.invoke(invocation.getThis(), method, invocation.getArguments());
 			}
@@ -422,13 +425,13 @@ public class MBeanClientInterceptor
 			throw ex.getTargetError();
 		}
 		catch (RuntimeOperationsException ex) {
-			// This one is only thrown by the JMX 1.2 RI, not by the JDK 1.5 JMX code.
+			// This one is only thrown by the JMX 1.2 RI, not by the JDK JMX code.
 			RuntimeException rex = ex.getTargetException();
-			if (rex instanceof RuntimeMBeanException) {
-				throw ((RuntimeMBeanException) rex).getTargetException();
+			if (rex instanceof RuntimeMBeanException runtimeMBeanException) {
+				throw runtimeMBeanException.getTargetException();
 			}
-			else if (rex instanceof RuntimeErrorException) {
-				throw ((RuntimeErrorException) rex).getTargetError();
+			else if (rex instanceof RuntimeErrorException runtimeErrorException) {
+				throw runtimeErrorException.getTargetError();
 			}
 			else {
 				throw rex;
@@ -460,8 +463,10 @@ public class MBeanClientInterceptor
 		}
 	}
 
-	private Object invokeAttribute(PropertyDescriptor pd, MethodInvocation invocation)
+	private @Nullable Object invokeAttribute(PropertyDescriptor pd, MethodInvocation invocation)
 			throws JMException, IOException {
+
+		Assert.state(this.serverToUse != null, "No MBeanServerConnection available");
 
 		String attributeName = JmxUtils.getAttributeName(pd, this.useStrictCasing);
 		MBeanAttributeInfo inf = this.allowedAttributes.get(attributeName);
@@ -471,6 +476,7 @@ public class MBeanClientInterceptor
 			throw new InvalidInvocationException(
 					"Attribute '" + pd.getName() + "' is not exposed on the management interface");
 		}
+
 		if (invocation.getMethod().equals(pd.getReadMethod())) {
 			if (inf.isReadable()) {
 				return this.serverToUse.getAttribute(this.objectName, attributeName);
@@ -501,14 +507,17 @@ public class MBeanClientInterceptor
 	 * @param args the invocation arguments
 	 * @return the value returned by the method invocation.
 	 */
-	private Object invokeOperation(Method method, Object[] args) throws JMException, IOException {
+	private Object invokeOperation(Method method, @Nullable Object[] args) throws JMException, IOException {
+		Assert.state(this.serverToUse != null, "No MBeanServerConnection available");
+
 		MethodCacheKey key = new MethodCacheKey(method.getName(), method.getParameterTypes());
 		MBeanOperationInfo info = this.allowedOperations.get(key);
 		if (info == null) {
 			throw new InvalidInvocationException("Operation '" + method.getName() +
 					"' is not exposed on the management interface");
 		}
-		String[] signature = null;
+
+		String[] signature;
 		synchronized (this.signatureCache) {
 			signature = this.signatureCache.get(method);
 			if (signature == null) {
@@ -516,6 +525,7 @@ public class MBeanClientInterceptor
 				this.signatureCache.put(method, signature);
 			}
 		}
+
 		return this.serverToUse.invoke(this.objectName, method.getName(), args, signature);
 	}
 
@@ -527,7 +537,7 @@ public class MBeanClientInterceptor
 	 * @return the converted result object, or the passed-in object if no conversion
 	 * is necessary
 	 */
-	protected Object convertResultValueIfNecessary(Object result, MethodParameter parameter) {
+	protected @Nullable Object convertResultValueIfNecessary(@Nullable Object result, MethodParameter parameter) {
 		Class<?> targetClass = parameter.getParameterType();
 		try {
 			if (result == null) {
@@ -540,13 +550,13 @@ public class MBeanClientInterceptor
 				Method fromMethod = targetClass.getMethod("from", CompositeData.class);
 				return ReflectionUtils.invokeMethod(fromMethod, null, result);
 			}
-			else if (result instanceof CompositeData[]) {
-				CompositeData[] array = (CompositeData[]) result;
+			else if (result instanceof CompositeData[] array) {
 				if (targetClass.isArray()) {
 					return convertDataArrayToTargetArray(array, targetClass);
 				}
 				else if (Collection.class.isAssignableFrom(targetClass)) {
-					Class<?> elementType = GenericCollectionTypeResolver.getCollectionParameterType(parameter);
+					Class<?> elementType =
+							ResolvableType.forMethodParameter(parameter).asCollection().resolveGeneric();
 					if (elementType != null) {
 						return convertDataArrayToTargetCollection(array, targetClass, elementType);
 					}
@@ -556,13 +566,13 @@ public class MBeanClientInterceptor
 				Method fromMethod = targetClass.getMethod("from", TabularData.class);
 				return ReflectionUtils.invokeMethod(fromMethod, null, result);
 			}
-			else if (result instanceof TabularData[]) {
-				TabularData[] array = (TabularData[]) result;
+			else if (result instanceof TabularData[] array) {
 				if (targetClass.isArray()) {
 					return convertDataArrayToTargetArray(array, targetClass);
 				}
 				else if (Collection.class.isAssignableFrom(targetClass)) {
-					Class<?> elementType = GenericCollectionTypeResolver.getCollectionParameterType(parameter);
+					Class<?> elementType =
+							ResolvableType.forMethodParameter(parameter).asCollection().resolveGeneric();
 					if (elementType != null) {
 						return convertDataArrayToTargetCollection(array, targetClass, elementType);
 					}
@@ -579,8 +589,8 @@ public class MBeanClientInterceptor
 	}
 
 	private Object convertDataArrayToTargetArray(Object[] array, Class<?> targetClass) throws NoSuchMethodException {
-		Class<?> targetType = targetClass.getComponentType();
-		Method fromMethod = targetType.getMethod("from", array.getClass().getComponentType());
+		Class<?> targetType = targetClass.componentType();
+		Method fromMethod = targetType.getMethod("from", array.getClass().componentType());
 		Object resultArray = Array.newInstance(targetType, array.length);
 		for (int i = 0; i < array.length; i++) {
 			Array.set(resultArray, i, ReflectionUtils.invokeMethod(fromMethod, null, array[i]));
@@ -591,10 +601,10 @@ public class MBeanClientInterceptor
 	private Collection<?> convertDataArrayToTargetCollection(Object[] array, Class<?> collectionType, Class<?> elementType)
 			throws NoSuchMethodException {
 
-		Method fromMethod = elementType.getMethod("from", array.getClass().getComponentType());
+		Method fromMethod = elementType.getMethod("from", array.getClass().componentType());
 		Collection<Object> resultColl = CollectionFactory.createCollection(collectionType, Array.getLength(array));
-		for (int i = 0; i < array.length; i++) {
-			resultColl.add(ReflectionUtils.invokeMethod(fromMethod, null, array[i]));
+		for (Object element : array) {
+			resultColl.add(ReflectionUtils.invokeMethod(fromMethod, null, element));
 		}
 		return resultColl;
 	}
@@ -622,18 +632,16 @@ public class MBeanClientInterceptor
 		 * @param name the name of the method
 		 * @param parameterTypes the arguments in the method signature
 		 */
-		public MethodCacheKey(String name, Class<?>[] parameterTypes) {
+		public MethodCacheKey(String name, Class<?> @Nullable [] parameterTypes) {
 			this.name = name;
 			this.parameterTypes = (parameterTypes != null ? parameterTypes : new Class<?>[0]);
 		}
 
 		@Override
-		public boolean equals(Object other) {
-			if (this == other) {
-				return true;
-			}
-			MethodCacheKey otherKey = (MethodCacheKey) other;
-			return (this.name.equals(otherKey.name) && Arrays.equals(this.parameterTypes, otherKey.parameterTypes));
+		public boolean equals(@Nullable Object other) {
+			return (this == other || (other instanceof MethodCacheKey that &&
+					this.name.equals(that.name) &&
+					Arrays.equals(this.parameterTypes, that.parameterTypes)));
 		}
 
 		@Override

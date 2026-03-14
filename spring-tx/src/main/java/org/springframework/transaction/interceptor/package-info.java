@@ -11,4 +11,7 @@
  * This allows declarative transaction management in any environment,
  * even without JTA if an application uses only a single database.
  */
+@NullMarked
 package org.springframework.transaction.interceptor;
+
+import org.jspecify.annotations.NullMarked;

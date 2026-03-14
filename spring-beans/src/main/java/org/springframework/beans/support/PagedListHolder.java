@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,8 +18,11 @@ package org.springframework.beans.support;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.util.Assert;
 
@@ -27,7 +30,7 @@ import org.springframework.util.Assert;
  * PagedListHolder is a simple state holder for handling lists of objects,
  * separating them into pages. Page numbering starts with 0.
  *
- * <p>This is mainly targetted at usage in web UIs. Typically, an instance will be
+ * <p>This is mainly targeted at usage in web UIs. Typically, an instance will be
  * instantiated with a list of beans, put into the session, and exported as model.
  * The properties can all be set/get programmatically, but the most common way will
  * be data binding, i.e. populating the bean from request parameters. The getters
@@ -44,24 +47,33 @@ import org.springframework.util.Assert;
  *
  * @author Juergen Hoeller
  * @since 19.05.2003
+ * @param <E> the element type
  * @see #getPageList()
- * @see org.springframework.beans.support.MutableSortDefinition
+ * @deprecated as severely outdated and superseded by more modern solutions,
+ * for example in Spring Data Commons
  */
-@SuppressWarnings("serial")
+@Deprecated(since = "7.0.3", forRemoval = true)
+@SuppressWarnings({"removal", "serial"})
 public class PagedListHolder<E> implements Serializable {
 
+	/**
+	 * The default page size.
+	 */
 	public static final int DEFAULT_PAGE_SIZE = 10;
 
+	/**
+	 * The default maximum number of page links.
+	 */
 	public static final int DEFAULT_MAX_LINKED_PAGES = 10;
 
 
-	private List<E> source;
+	private List<E> source = Collections.emptyList();
 
-	private Date refreshDate;
+	private @Nullable Date refreshDate;
 
-	private SortDefinition sort;
+	private @Nullable SortDefinition sort;
 
-	private SortDefinition sortUsed;
+	private @Nullable SortDefinition sortUsed;
 
 	private int pageSize = DEFAULT_PAGE_SIZE;
 
@@ -78,7 +90,7 @@ public class PagedListHolder<E> implements Serializable {
 	 * @see #setSource
 	 */
 	public PagedListHolder() {
-		this(new ArrayList<E>(0));
+		this(new ArrayList<>(0));
 	}
 
 	/**
@@ -122,7 +134,7 @@ public class PagedListHolder<E> implements Serializable {
 	/**
 	 * Return the last time the list has been fetched from the source provider.
 	 */
-	public Date getRefreshDate() {
+	public @Nullable Date getRefreshDate() {
 		return this.refreshDate;
 	}
 
@@ -131,14 +143,14 @@ public class PagedListHolder<E> implements Serializable {
 	 * Typically an instance of MutableSortDefinition.
 	 * @see org.springframework.beans.support.MutableSortDefinition
 	 */
-	public void setSort(SortDefinition sort) {
+	public void setSort(@Nullable SortDefinition sort) {
 		this.sort = sort;
 	}
 
 	/**
 	 * Return the sort definition for this holder.
 	 */
-	public SortDefinition getSort() {
+	public @Nullable SortDefinition getSort() {
 		return this.sort;
 	}
 

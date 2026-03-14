@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,15 @@
 
 package org.springframework.web.servlet.tags;
 
-import javax.servlet.jsp.JspException;
-import javax.servlet.jsp.JspTagException;
-import javax.servlet.jsp.tagext.TagSupport;
-import javax.servlet.jsp.tagext.TryCatchFinally;
-
+import jakarta.servlet.jsp.JspException;
+import jakarta.servlet.jsp.JspTagException;
+import jakarta.servlet.jsp.tagext.TagSupport;
+import jakarta.servlet.jsp.tagext.TryCatchFinally;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
+import org.springframework.util.Assert;
 import org.springframework.web.servlet.support.JspAwareRequestContext;
 import org.springframework.web.servlet.support.RequestContext;
 
@@ -33,8 +34,7 @@ import org.springframework.web.servlet.support.RequestContext;
  * <p>The {@code RequestContext} instance provides easy access
  * to current state like the
  * {@link org.springframework.web.context.WebApplicationContext},
- * the {@link java.util.Locale}, the
- * {@link org.springframework.ui.context.Theme}, etc.
+ * the {@link java.util.Locale}, etc.
  *
  * <p>Mainly intended for
  * {@link org.springframework.web.servlet.DispatcherServlet} requests;
@@ -49,18 +49,18 @@ import org.springframework.web.servlet.support.RequestContext;
 public abstract class RequestContextAwareTag extends TagSupport implements TryCatchFinally {
 
 	/**
-	 * {@link javax.servlet.jsp.PageContext} attribute for the
+	 * {@link jakarta.servlet.jsp.PageContext} attribute for the
 	 * page-level {@link RequestContext} instance.
 	 */
 	public static final String REQUEST_CONTEXT_PAGE_ATTRIBUTE =
 			"org.springframework.web.servlet.tags.REQUEST_CONTEXT";
 
 
-	/** Logger available to subclasses */
+	/** Logger available to subclasses. */
 	protected final Log logger = LogFactory.getLog(getClass());
 
 
-	private RequestContext requestContext;
+	private @Nullable RequestContext requestContext;
 
 
 	/**
@@ -79,11 +79,7 @@ public abstract class RequestContextAwareTag extends TagSupport implements TryCa
 			}
 			return doStartTagInternal();
 		}
-		catch (JspException ex) {
-			logger.error(ex.getMessage(), ex);
-			throw ex;
-		}
-		catch (RuntimeException ex) {
+		catch (JspException | RuntimeException ex) {
 			logger.error(ex.getMessage(), ex);
 			throw ex;
 		}
@@ -97,6 +93,7 @@ public abstract class RequestContextAwareTag extends TagSupport implements TryCa
 	 * Return the current RequestContext.
 	 */
 	protected final RequestContext getRequestContext() {
+		Assert.state(this.requestContext != null, "No current RequestContext");
 		return this.requestContext;
 	}
 
@@ -105,7 +102,7 @@ public abstract class RequestContextAwareTag extends TagSupport implements TryCa
 	 * @return same as TagSupport.doStartTag
 	 * @throws Exception any exception, any checked one other than
 	 * a JspException gets wrapped in a JspException by doStartTag
-	 * @see javax.servlet.jsp.tagext.TagSupport#doStartTag
+	 * @see jakarta.servlet.jsp.tagext.TagSupport#doStartTag
 	 */
 	protected abstract int doStartTagInternal() throws Exception;
 

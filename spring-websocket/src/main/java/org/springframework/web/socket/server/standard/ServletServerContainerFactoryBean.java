@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,10 @@
 
 package org.springframework.web.socket.server.standard;
 
-import javax.servlet.ServletContext;
-import javax.websocket.WebSocketContainer;
-import javax.websocket.server.ServerContainer;
+import jakarta.servlet.ServletContext;
+import jakarta.websocket.WebSocketContainer;
+import jakarta.websocket.server.ServerContainer;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
@@ -26,9 +27,9 @@ import org.springframework.util.Assert;
 import org.springframework.web.context.ServletContextAware;
 
 /**
- * A {@link FactoryBean} for configuring {@link javax.websocket.server.ServerContainer}.
+ * A {@link FactoryBean} for configuring {@link jakarta.websocket.server.ServerContainer}.
  * Since there is usually only one {@code ServerContainer} instance accessible under a
- * well-known {@code javax.servlet.ServletContext} attribute, simply declaring this
+ * well-known {@code jakarta.servlet.ServletContext} attribute, simply declaring this
  * FactoryBean and using its setters allows for configuring the {@code ServerContainer}
  * through Spring configuration.
  *
@@ -40,64 +41,71 @@ import org.springframework.web.context.ServletContextAware;
  * to customize the properties of the (one and only) {@code ServerContainer} instance.
  *
  * @author Rossen Stoyanchev
+ * @author Sam Brannen
  * @since 4.0
  */
 public class ServletServerContainerFactoryBean
 		implements FactoryBean<WebSocketContainer>, ServletContextAware, InitializingBean {
 
-	private Long asyncSendTimeout;
+	private @Nullable Long asyncSendTimeout;
 
-	private Long maxSessionIdleTimeout;
+	private @Nullable Long maxSessionIdleTimeout;
 
-	private Integer maxTextMessageBufferSize;
+	private @Nullable Integer maxTextMessageBufferSize;
 
-	private Integer maxBinaryMessageBufferSize;
+	private @Nullable Integer maxBinaryMessageBufferSize;
 
-	private ServerContainer serverContainer;
+	private @Nullable ServletContext servletContext;
+
+	private @Nullable ServerContainer serverContainer;
 
 
-	public void setAsyncSendTimeout(long timeoutInMillis) {
+	public void setAsyncSendTimeout(@Nullable Long timeoutInMillis) {
 		this.asyncSendTimeout = timeoutInMillis;
 	}
 
-	public long getAsyncSendTimeout() {
+	public @Nullable Long getAsyncSendTimeout() {
 		return this.asyncSendTimeout;
 	}
 
-	public void setMaxSessionIdleTimeout(long timeoutInMillis) {
+	public void setMaxSessionIdleTimeout(@Nullable Long timeoutInMillis) {
 		this.maxSessionIdleTimeout = timeoutInMillis;
 	}
 
-	public Long getMaxSessionIdleTimeout() {
+	public @Nullable Long getMaxSessionIdleTimeout() {
 		return this.maxSessionIdleTimeout;
 	}
 
-	public void setMaxTextMessageBufferSize(int bufferSize) {
+	public void setMaxTextMessageBufferSize(@Nullable Integer bufferSize) {
 		this.maxTextMessageBufferSize = bufferSize;
 	}
 
-	public Integer getMaxTextMessageBufferSize() {
+	public @Nullable Integer getMaxTextMessageBufferSize() {
 		return this.maxTextMessageBufferSize;
 	}
 
-	public void setMaxBinaryMessageBufferSize(int bufferSize) {
+	public void setMaxBinaryMessageBufferSize(@Nullable Integer bufferSize) {
 		this.maxBinaryMessageBufferSize = bufferSize;
 	}
 
-	public Integer getMaxBinaryMessageBufferSize() {
+	public @Nullable Integer getMaxBinaryMessageBufferSize() {
 		return this.maxBinaryMessageBufferSize;
 	}
 
 	@Override
-	public void setServletContext(ServletContext servletContext) {
-		this.serverContainer = (ServerContainer) servletContext.getAttribute("javax.websocket.server.ServerContainer");
+	public void setServletContext(@Nullable ServletContext servletContext) {
+		this.servletContext = servletContext;
 	}
 
 
 	@Override
 	public void afterPropertiesSet() {
+		Assert.state(this.servletContext != null,
+				"A ServletContext is required to access the jakarta.websocket.server.ServerContainer instance");
+		this.serverContainer = (ServerContainer) this.servletContext.getAttribute(
+				"jakarta.websocket.server.ServerContainer");
 		Assert.state(this.serverContainer != null,
-				"A ServletContext is required to access the javax.websocket.server.ServerContainer instance");
+				"Attribute 'jakarta.websocket.server.ServerContainer' not found in ServletContext");
 
 		if (this.asyncSendTimeout != null) {
 			this.serverContainer.setAsyncSendTimeout(this.asyncSendTimeout);
@@ -115,7 +123,7 @@ public class ServletServerContainerFactoryBean
 
 
 	@Override
-	public ServerContainer getObject() {
+	public @Nullable ServerContainer getObject() {
 		return this.serverContainer;
 	}
 

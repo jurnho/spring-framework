@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,12 +16,13 @@
 
 package org.springframework.validation.beanvalidation;
 
-import javax.validation.MessageInterpolator;
-import javax.validation.TraversableResolver;
-import javax.validation.Validation;
-import javax.validation.Validator;
-import javax.validation.ValidatorContext;
-import javax.validation.ValidatorFactory;
+import jakarta.validation.MessageInterpolator;
+import jakarta.validation.TraversableResolver;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorContext;
+import jakarta.validation.ValidatorFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.InitializingBean;
 
@@ -35,16 +36,16 @@ import org.springframework.beans.factory.InitializingBean;
  */
 public class CustomValidatorBean extends SpringValidatorAdapter implements Validator, InitializingBean {
 
-	private ValidatorFactory validatorFactory;
+	private @Nullable ValidatorFactory validatorFactory;
 
-	private MessageInterpolator messageInterpolator;
+	private @Nullable MessageInterpolator messageInterpolator;
 
-	private TraversableResolver traversableResolver;
+	private @Nullable TraversableResolver traversableResolver;
 
 
 	/**
 	 * Set the ValidatorFactory to obtain the target Validator from.
-	 * <p>Default is {@link javax.validation.Validation#buildDefaultValidatorFactory()}.
+	 * <p>Default is {@link jakarta.validation.Validation#buildDefaultValidatorFactory()}.
 	 */
 	public void setValidatorFactory(ValidatorFactory validatorFactory) {
 		this.validatorFactory = validatorFactory;

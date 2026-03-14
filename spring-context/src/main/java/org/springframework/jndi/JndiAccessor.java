@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2007 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import java.util.Properties;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Convenient superclass for JNDI accessors, providing "jndiTemplate"
@@ -45,7 +46,7 @@ public class JndiAccessor {
 	 * <p>You can also specify JNDI environment settings via "jndiEnvironment".
 	 * @see #setJndiEnvironment
 	 */
-	public void setJndiTemplate(JndiTemplate jndiTemplate) {
+	public void setJndiTemplate(@Nullable JndiTemplate jndiTemplate) {
 		this.jndiTemplate = (jndiTemplate != null ? jndiTemplate : new JndiTemplate());
 	}
 
@@ -61,14 +62,14 @@ public class JndiAccessor {
 	 * <p>Creates a JndiTemplate with the given environment settings.
 	 * @see #setJndiTemplate
 	 */
-	public void setJndiEnvironment(Properties jndiEnvironment) {
+	public void setJndiEnvironment(@Nullable Properties jndiEnvironment) {
 		this.jndiTemplate = new JndiTemplate(jndiEnvironment);
 	}
 
 	/**
 	 * Return the JNDI environment to use for JNDI lookups.
 	 */
-	public Properties getJndiEnvironment() {
+	public @Nullable Properties getJndiEnvironment() {
 		return this.jndiTemplate.getEnvironment();
 	}
 

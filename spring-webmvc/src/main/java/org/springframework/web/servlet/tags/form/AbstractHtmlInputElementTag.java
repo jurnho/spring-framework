@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,8 @@
 
 package org.springframework.web.servlet.tags.form;
 
-import javax.servlet.jsp.JspException;
+import jakarta.servlet.jsp.JspException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Base class for databinding-aware JSP tags that render HTML form input element.
@@ -63,13 +64,13 @@ public abstract class AbstractHtmlInputElementTag extends AbstractHtmlElementTag
 	public static final String READONLY_ATTRIBUTE = "readonly";
 
 
-	private String onfocus;
+	private @Nullable String onfocus;
 
-	private String onblur;
+	private @Nullable String onblur;
 
-	private String onchange;
+	private @Nullable String onchange;
 
-	private String accesskey;
+	private @Nullable String accesskey;
 
 	private boolean disabled;
 
@@ -87,7 +88,7 @@ public abstract class AbstractHtmlInputElementTag extends AbstractHtmlElementTag
 	/**
 	 * Get the value of the '{@code onfocus}' attribute.
 	 */
-	protected String getOnfocus() {
+	protected @Nullable String getOnfocus() {
 		return this.onfocus;
 	}
 
@@ -102,7 +103,7 @@ public abstract class AbstractHtmlInputElementTag extends AbstractHtmlElementTag
 	/**
 	 * Get the value of the '{@code onblur}' attribute.
 	 */
-	protected String getOnblur() {
+	protected @Nullable String getOnblur() {
 		return this.onblur;
 	}
 
@@ -117,7 +118,7 @@ public abstract class AbstractHtmlInputElementTag extends AbstractHtmlElementTag
 	/**
 	 * Get the value of the '{@code onchange}' attribute.
 	 */
-	protected String getOnchange() {
+	protected @Nullable String getOnchange() {
 		return this.onchange;
 	}
 
@@ -132,7 +133,7 @@ public abstract class AbstractHtmlInputElementTag extends AbstractHtmlElementTag
 	/**
 	 * Get the value of the '{@code accesskey}' attribute.
 	 */
-	protected String getAccesskey() {
+	protected @Nullable String getAccesskey() {
 		return this.accesskey;
 	}
 

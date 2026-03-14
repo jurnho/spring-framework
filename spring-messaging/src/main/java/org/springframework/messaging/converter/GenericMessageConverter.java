@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.messaging.converter;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.convert.ConversionException;
 import org.springframework.core.convert.ConversionService;
@@ -44,7 +46,7 @@ public class GenericMessageConverter extends SimpleMessageConverter {
 	 * Create a new instance with a default {@link ConversionService}.
 	 */
 	public GenericMessageConverter() {
-		this.conversionService = new DefaultConversionService();
+		this.conversionService = DefaultConversionService.getSharedInstance();
 	}
 
 	/**
@@ -57,12 +59,9 @@ public class GenericMessageConverter extends SimpleMessageConverter {
 
 
 	@Override
-	public Object fromMessage(Message<?> message, Class<?> targetClass) {
+	public @Nullable Object fromMessage(Message<?> message, Class<?> targetClass) {
 		Object payload = message.getPayload();
-		if (targetClass == null) {
-			return payload;
-		}
-		if (payload != null && this.conversionService.canConvert(payload.getClass(), targetClass)) {
+		if (this.conversionService.canConvert(payload.getClass(), targetClass)) {
 			try {
 				return this.conversionService.convert(payload, targetClass);
 			}

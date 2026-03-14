@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,10 @@
 
 package org.springframework.validation;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.beans.ConfigurablePropertyAccessor;
 import org.springframework.beans.PropertyAccessorFactory;
-import org.springframework.util.Assert;
 
 /**
  * Special implementation of the Errors and BindingResult interfaces,
@@ -36,29 +37,29 @@ import org.springframework.util.Assert;
 @SuppressWarnings("serial")
 public class DirectFieldBindingResult extends AbstractPropertyBindingResult {
 
-	private final Object target;
+	private final @Nullable Object target;
 
 	private final boolean autoGrowNestedPaths;
 
-	private transient ConfigurablePropertyAccessor directFieldAccessor;
+	private transient @Nullable ConfigurablePropertyAccessor directFieldAccessor;
 
 
 	/**
-	 * Create a new DirectFieldBindingResult instance.
+	 * Create a new {@code DirectFieldBindingResult} for the given target.
 	 * @param target the target object to bind onto
 	 * @param objectName the name of the target object
 	 */
-	public DirectFieldBindingResult(Object target, String objectName) {
+	public DirectFieldBindingResult(@Nullable Object target, String objectName) {
 		this(target, objectName, true);
 	}
 
 	/**
-	 * Create a new DirectFieldBindingResult instance.
+	 * Create a new {@code DirectFieldBindingResult} for the given target.
 	 * @param target the target object to bind onto
 	 * @param objectName the name of the target object
 	 * @param autoGrowNestedPaths whether to "auto-grow" a nested path that contains a null value
 	 */
-	public DirectFieldBindingResult(Object target, String objectName, boolean autoGrowNestedPaths) {
+	public DirectFieldBindingResult(@Nullable Object target, String objectName, boolean autoGrowNestedPaths) {
 		super(objectName);
 		this.target = target;
 		this.autoGrowNestedPaths = autoGrowNestedPaths;
@@ -66,7 +67,7 @@ public class DirectFieldBindingResult extends AbstractPropertyBindingResult {
 
 
 	@Override
-	public final Object getTarget() {
+	public final @Nullable Object getTarget() {
 		return this.target;
 	}
 
@@ -90,7 +91,9 @@ public class DirectFieldBindingResult extends AbstractPropertyBindingResult {
 	 * @see #getTarget()
 	 */
 	protected ConfigurablePropertyAccessor createDirectFieldAccessor() {
-		Assert.state(this.target != null, "Cannot access fields on null target instance '" + getObjectName() + "'!");
+		if (this.target == null) {
+			throw new IllegalStateException("Cannot access fields on null target instance '" + getObjectName() + "'");
+		}
 		return PropertyAccessorFactory.forDirectFieldAccess(this.target);
 	}
 

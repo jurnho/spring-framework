@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,9 +23,15 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
+
+import org.apache.commons.logging.Log;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.EmbeddedValueResolverAware;
 import org.springframework.context.SmartLifecycle;
@@ -48,14 +54,16 @@ import org.springframework.messaging.handler.annotation.support.DestinationVaria
 import org.springframework.messaging.handler.annotation.support.HeaderMethodArgumentResolver;
 import org.springframework.messaging.handler.annotation.support.HeadersMethodArgumentResolver;
 import org.springframework.messaging.handler.annotation.support.MessageMethodArgumentResolver;
-import org.springframework.messaging.handler.annotation.support.PayloadArgumentResolver;
+import org.springframework.messaging.handler.annotation.support.PayloadMethodArgumentResolver;
 import org.springframework.messaging.handler.invocation.AbstractExceptionHandlerMethodResolver;
 import org.springframework.messaging.handler.invocation.AbstractMethodMessageHandler;
 import org.springframework.messaging.handler.invocation.CompletableFutureReturnValueHandler;
 import org.springframework.messaging.handler.invocation.HandlerMethodArgumentResolver;
 import org.springframework.messaging.handler.invocation.HandlerMethodReturnValueHandler;
-import org.springframework.messaging.handler.invocation.ListenableFutureReturnValueHandler;
+import org.springframework.messaging.handler.invocation.HandlerMethodReturnValueHandlerComposite;
+import org.springframework.messaging.handler.invocation.ReactiveReturnValueHandler;
 import org.springframework.messaging.simp.SimpAttributesContextHolder;
+import org.springframework.messaging.simp.SimpLogging;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessageMappingInfo;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
@@ -87,8 +95,8 @@ import org.springframework.validation.Validator;
 public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHandler<SimpMessageMappingInfo>
 		implements EmbeddedValueResolverAware, SmartLifecycle {
 
-	private static final boolean completableFuturePresent = ClassUtils.isPresent(
-			"java.util.concurrent.CompletableFuture", SimpAnnotationMethodMessageHandler.class.getClassLoader());
+	private static final boolean REACTOR_PRESENT = ClassUtils.isPresent(
+			"reactor.core.publisher.Flux", SimpAnnotationMethodMessageHandler.class.getClassLoader());
 
 
 	private final SubscribableChannel clientInboundChannel;
@@ -105,22 +113,26 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 
 	private boolean slashPathSeparator = true;
 
-	private Validator validator;
+	private @Nullable Validator validator;
 
-	private StringValueResolver valueResolver;
+	private @Nullable StringValueResolver valueResolver;
 
-	private MessageHeaderInitializer headerInitializer;
+	private @Nullable MessageHeaderInitializer headerInitializer;
+
+	private @Nullable Predicate<String> headerFilter;
+
+	private @Nullable Integer phase;
+
+	private volatile boolean running;
 
 	private final Object lifecycleMonitor = new Object();
-
-	private volatile boolean running = false;
 
 
 	/**
 	 * Create an instance of SimpAnnotationMethodMessageHandler with the given
 	 * message channels and broker messaging template.
-	 * @param clientInboundChannel the channel for receiving messages from clients (e.g. WebSocket clients)
-	 * @param clientOutboundChannel the channel for messages to clients (e.g. WebSocket clients)
+	 * @param clientInboundChannel the channel for receiving messages from clients (for example, WebSocket clients)
+	 * @param clientOutboundChannel the channel for messages to clients (for example, WebSocket clients)
 	 * @param brokerTemplate a messaging template to send application messages to the broker
 	 */
 	public SimpAnnotationMethodMessageHandler(SubscribableChannel clientInboundChannel,
@@ -134,7 +146,7 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 		this.clientMessagingTemplate = new SimpMessagingTemplate(clientOutboundChannel);
 		this.brokerTemplate = brokerTemplate;
 
-		Collection<MessageConverter> converters = new ArrayList<MessageConverter>();
+		Collection<MessageConverter> converters = new ArrayList<>();
 		converters.add(new StringMessageConverter());
 		converters.add(new ByteArrayMessageConverter());
 		this.messageConverter = new CompositeMessageConverter(converters);
@@ -147,19 +159,19 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 	 * therefore a slash is automatically appended where missing to ensure a
 	 * proper prefix-based match (i.e. matching complete segments).
 	 * <p>Note however that the remaining portion of a destination after the
-	 * prefix may use a different separator (e.g. commonly "." in messaging)
+	 * prefix may use a different separator (for example, commonly "." in messaging)
 	 * depending on the configured {@code PathMatcher}.
 	 */
 	@Override
-	public void setDestinationPrefixes(Collection<String> prefixes) {
+	public void setDestinationPrefixes(@Nullable Collection<String> prefixes) {
 		super.setDestinationPrefixes(appendSlashes(prefixes));
 	}
 
-	private static Collection<String> appendSlashes(Collection<String> prefixes) {
+	private static @Nullable Collection<String> appendSlashes(@Nullable Collection<String> prefixes) {
 		if (CollectionUtils.isEmpty(prefixes)) {
 			return prefixes;
 		}
-		Collection<String> result = new ArrayList<String>(prefixes.size());
+		Collection<String> result = new ArrayList<>(prefixes.size());
 		for (String prefix : prefixes) {
 			if (!prefix.endsWith("/")) {
 				prefix = prefix + "/";
@@ -177,9 +189,7 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 	 */
 	public void setMessageConverter(MessageConverter converter) {
 		this.messageConverter = converter;
-		if (converter != null) {
-			((AbstractMessageSendingTemplate<?>) this.clientMessagingTemplate).setMessageConverter(converter);
-		}
+		((AbstractMessageSendingTemplate<?>) this.clientMessagingTemplate).setMessageConverter(converter);
 	}
 
 	/**
@@ -226,16 +236,16 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 	/**
 	 * Return the configured Validator instance.
 	 */
-	public Validator getValidator() {
+	public @Nullable Validator getValidator() {
 		return this.validator;
 	}
 
 	/**
-	 * Set the Validator instance used for validating @Payload arguments
+	 * Set the Validator instance used for validating {@code @Payload} arguments.
 	 * @see org.springframework.validation.annotation.Validated
-	 * @see PayloadArgumentResolver
+	 * @see PayloadMethodArgumentResolver
 	 */
-	public void setValidator(Validator validator) {
+	public void setValidator(@Nullable Validator validator) {
 		this.validator = validator;
 	}
 
@@ -246,38 +256,52 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 
 	/**
 	 * Configure a {@link MessageHeaderInitializer} to pass on to
-	 * {@link org.springframework.messaging.handler.invocation.HandlerMethodReturnValueHandler}s
+	 * {@link HandlerMethodReturnValueHandler HandlerMethodReturnValueHandlers}
 	 * that send messages from controller return values.
 	 * <p>By default, this property is not set.
 	 */
-	public void setHeaderInitializer(MessageHeaderInitializer headerInitializer) {
+	public void setHeaderInitializer(@Nullable MessageHeaderInitializer headerInitializer) {
 		this.headerInitializer = headerInitializer;
 	}
 
 	/**
 	 * Return the configured header initializer.
 	 */
-	public MessageHeaderInitializer getHeaderInitializer() {
+	public @Nullable MessageHeaderInitializer getHeaderInitializer() {
 		return this.headerInitializer;
 	}
 
+	/**
+	 * Add a filter to determine which headers from the input message should be
+	 * propagated to the output message. Applies to return value handling of
+	 * {@code @SendTo}, {@code @SendToUser}, and {@code @SubscribeMapping}
+	 * controller methods. The filter is applied to the "native headers" submap.
+	 * Multiple filters are combined with {@link Predicate#or(Predicate)}.
+	 * <p>By default, no headers are propagated if this is not set.
+	 * @since 7.0.4
+	 * @see SendToMethodReturnValueHandler#addHeaderFilter(Predicate)
+	 * @see SubscriptionMethodReturnValueHandler#addHeaderFilter(Predicate)
+	 */
+	public void addHeaderFilter(Predicate<String> filter) {
+		Assert.notNull(filter, "'headerFilter' predicate must not be null");
+		this.headerFilter = (this.headerFilter != null ? this.headerFilter.or(filter) : filter);
+	}
 
-	@Override
-	public boolean isAutoStartup() {
-		return true;
+	/**
+	 * Set the phase that this handler should run in.
+	 * <p>By default, this is {@link SmartLifecycle#DEFAULT_PHASE}, but with
+	 * {@code @EnableWebSocketMessageBroker} configuration it is set to 0.
+	 * @since 6.1.4
+	 */
+	public void setPhase(int phase) {
+		this.phase = phase;
 	}
 
 	@Override
 	public int getPhase() {
-		return Integer.MAX_VALUE;
+		return (this.phase != null ? this.phase : SmartLifecycle.super.getPhase());
 	}
 
-	@Override
-	public final boolean isRunning() {
-		synchronized (this.lifecycleMonitor) {
-			return this.running;
-		}
-	}
 
 	@Override
 	public final void start() {
@@ -303,12 +327,19 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 		}
 	}
 
+	@Override
+	public final boolean isRunning() {
+		return this.running;
+	}
 
+
+	@Override
 	protected List<HandlerMethodArgumentResolver> initArgumentResolvers() {
-		ConfigurableBeanFactory beanFactory = (getApplicationContext() instanceof ConfigurableApplicationContext ?
-				((ConfigurableApplicationContext) getApplicationContext()).getBeanFactory() : null);
+		ApplicationContext context = getApplicationContext();
+		ConfigurableBeanFactory beanFactory = (context instanceof ConfigurableApplicationContext cac ?
+				cac.getBeanFactory() : null);
 
-		List<HandlerMethodArgumentResolver> resolvers = new ArrayList<HandlerMethodArgumentResolver>();
+		List<HandlerMethodArgumentResolver> resolvers = new ArrayList<>();
 
 		// Annotation-based argument resolution
 		resolvers.add(new HeaderMethodArgumentResolver(this.conversionService, beanFactory));
@@ -320,41 +351,64 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 		resolvers.add(new MessageMethodArgumentResolver(this.messageConverter));
 
 		resolvers.addAll(getCustomArgumentResolvers());
-		resolvers.add(new PayloadArgumentResolver(this.messageConverter, this.validator));
+		resolvers.add(new PayloadMethodArgumentResolver(this.messageConverter, this.validator));
 
 		return resolvers;
 	}
 
 	@Override
 	protected List<? extends HandlerMethodReturnValueHandler> initReturnValueHandlers() {
-		List<HandlerMethodReturnValueHandler> handlers = new ArrayList<HandlerMethodReturnValueHandler>();
+		List<HandlerMethodReturnValueHandler> handlers = new ArrayList<>();
 
 		// Single-purpose return value types
-		handlers.add(new ListenableFutureReturnValueHandler());
-		if (completableFuturePresent) {
-			handlers.add(new CompletableFutureReturnValueHandler());
+
+		handlers.add(new CompletableFutureReturnValueHandler());
+		if (REACTOR_PRESENT) {
+			handlers.add(new ReactiveReturnValueHandler());
 		}
 
 		// Annotation-based return value types
+
 		SendToMethodReturnValueHandler sendToHandler =
 				new SendToMethodReturnValueHandler(this.brokerTemplate, true);
 		sendToHandler.setHeaderInitializer(this.headerInitializer);
+		if (this.headerFilter != null) {
+			sendToHandler.addHeaderFilter(this.headerFilter);
+		}
 		handlers.add(sendToHandler);
 
 		SubscriptionMethodReturnValueHandler subscriptionHandler =
 				new SubscriptionMethodReturnValueHandler(this.clientMessagingTemplate);
 		subscriptionHandler.setHeaderInitializer(this.headerInitializer);
+		if (this.headerFilter != null) {
+			subscriptionHandler.addHeaderFilter(this.headerFilter);
+		}
 		handlers.add(subscriptionHandler);
 
-		// custom return value types
+		// Custom return value types
+
 		handlers.addAll(getCustomReturnValueHandlers());
 
-		// catch-all
+		// Catch-all
+
 		sendToHandler = new SendToMethodReturnValueHandler(this.brokerTemplate, false);
 		sendToHandler.setHeaderInitializer(this.headerInitializer);
+		if (this.headerFilter != null) {
+			sendToHandler.addHeaderFilter(this.headerFilter);
+		}
 		handlers.add(sendToHandler);
 
 		return handlers;
+	}
+
+	@Override
+	protected Log getReturnValueHandlerLogger() {
+		return SimpLogging.forLog(HandlerMethodReturnValueHandlerComposite.defaultLogger);
+	}
+
+	@Override
+	protected Log getHandlerMethodLogger() {
+		return SimpLogging.forLog(HandlerMethod.defaultLogger);
 	}
 
 
@@ -364,7 +418,7 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 	}
 
 	@Override
-	protected SimpMessageMappingInfo getMappingForMethod(Method method, Class<?> handlerType) {
+	protected @Nullable SimpMessageMappingInfo getMappingForMethod(Method method, Class<?> handlerType) {
 		MessageMapping messageAnn = AnnotatedElementUtils.findMergedAnnotation(method, MessageMapping.class);
 		if (messageAnn != null) {
 			MessageMapping typeAnn = AnnotatedElementUtils.findMergedAnnotation(handlerType, MessageMapping.class);
@@ -419,14 +473,14 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 		}
 		String[] result = new String[destinations.length];
 		for (int i = 0; i < destinations.length; i++) {
-			result[i] = this.valueResolver.resolveStringValue(destinations[i]);
+			result[i] = Objects.requireNonNull(this.valueResolver.resolveStringValue(destinations[i]));
 		}
 		return result;
 	}
 
 	@Override
 	protected Set<String> getDirectLookupDestinations(SimpMessageMappingInfo mapping) {
-		Set<String> result = new LinkedHashSet<String>();
+		Set<String> result = new LinkedHashSet<>();
 		for (String pattern : mapping.getDestinationConditions().getPatterns()) {
 			if (!this.pathMatcher.isPattern(pattern)) {
 				result.add(pattern);
@@ -436,12 +490,12 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 	}
 
 	@Override
-	protected String getDestination(Message<?> message) {
+	protected @Nullable String getDestination(Message<?> message) {
 		return SimpMessageHeaderAccessor.getDestination(message.getHeaders());
 	}
 
 	@Override
-	protected String getLookupDestination(String destination) {
+	protected @Nullable String getLookupDestination(@Nullable String destination) {
 		if (destination == null) {
 			return null;
 		}
@@ -462,19 +516,14 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 	}
 
 	@Override
-	protected SimpMessageMappingInfo getMatchingMapping(SimpMessageMappingInfo mapping, Message<?> message) {
+	protected @Nullable SimpMessageMappingInfo getMatchingMapping(SimpMessageMappingInfo mapping, Message<?> message) {
 		return mapping.getMatchingCondition(message);
 
 	}
 
 	@Override
 	protected Comparator<SimpMessageMappingInfo> getMappingComparator(final Message<?> message) {
-		return new Comparator<SimpMessageMappingInfo>() {
-			@Override
-			public int compare(SimpMessageMappingInfo info1, SimpMessageMappingInfo info2) {
-				return info1.compareTo(info2, message);
-			}
-		};
+		return (info1, info2) -> info1.compareTo(info2, message);
 	}
 
 	@Override
@@ -487,7 +536,7 @@ public class SimpAnnotationMethodMessageHandler extends AbstractMethodMessageHan
 			Map<String, String> vars = getPathMatcher().extractUriTemplateVariables(pattern, lookupDestination);
 			if (!CollectionUtils.isEmpty(vars)) {
 				MessageHeaderAccessor mha = MessageHeaderAccessor.getAccessor(message, MessageHeaderAccessor.class);
-				Assert.state(mha != null && mha.isMutable());
+				Assert.state(mha != null && mha.isMutable(), "Mutable MessageHeaderAccessor required");
 				mha.setHeader(DestinationVariableMethodArgumentResolver.DESTINATION_TEMPLATE_VARIABLES_HEADER, vars);
 			}
 		}

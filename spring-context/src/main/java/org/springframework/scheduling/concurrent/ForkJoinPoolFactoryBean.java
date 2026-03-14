@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,26 +19,18 @@ package org.springframework.scheduling.concurrent;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.lang.UsesJava7;
 
 /**
  * A Spring {@link FactoryBean} that builds and exposes a preconfigured {@link ForkJoinPool}.
- * May be used on Java 7 and 8 as well as on Java 6 with {@code jsr166.jar} on the classpath
- * (ideally on the VM bootstrap classpath).
- *
- * <p>For details on the ForkJoinPool API and its use with RecursiveActions, see the
- * <a href="http://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ForkJoinPool.html">JDK 7 javadoc</a>.
- *
- * <p>{@code jsr166.jar}, containing {@code java.util.concurrent} updates for Java 6, can be obtained
- * from the <a href="http://gee.cs.oswego.edu/dl/concurrency-interest/">concurrency interest website</a>.
  *
  * @author Juergen Hoeller
  * @since 3.1
  */
-@UsesJava7
 public class ForkJoinPoolFactoryBean implements FactoryBean<ForkJoinPool>, InitializingBean, DisposableBean {
 
 	private boolean commonPool = false;
@@ -47,24 +39,25 @@ public class ForkJoinPoolFactoryBean implements FactoryBean<ForkJoinPool>, Initi
 
 	private ForkJoinPool.ForkJoinWorkerThreadFactory threadFactory = ForkJoinPool.defaultForkJoinWorkerThreadFactory;
 
-	private Thread.UncaughtExceptionHandler uncaughtExceptionHandler;
+	private Thread.@Nullable UncaughtExceptionHandler uncaughtExceptionHandler;
 
 	private boolean asyncMode = false;
 
 	private int awaitTerminationSeconds = 0;
 
-	private ForkJoinPool forkJoinPool;
+	private @Nullable ForkJoinPool forkJoinPool;
 
 
 	/**
-	 * Set whether to expose JDK 8's 'common' {@link ForkJoinPool}.
-	 * <p>Default is "false", creating a local {@link ForkJoinPool} instance based on the
-	 * {@link #setParallelism "parallelism"}, {@link #setThreadFactory "threadFactory"},
-	 * {@link #setUncaughtExceptionHandler "uncaughtExceptionHandler"} and
-	 * {@link #setAsyncMode "asyncMode"} properties on this FactoryBean.
-	 * <p><b>NOTE:</b> Setting this flag to "true" effectively ignores all other
+	 * Set whether to expose Java's 'common' {@link ForkJoinPool}.
+	 * <p>Default is {@code false} , creating a local {@link ForkJoinPool} instance
+	 * based on the {@link #setParallelism parallelism},
+	 * {@link #setThreadFactory threadFactory},
+	 * {@link #setUncaughtExceptionHandler uncaughtExceptionHandler}, and
+	 * {@link #setAsyncMode asyncMode} properties on this FactoryBean.
+	 * <p><b>NOTE:</b> Setting this flag to {@code true} effectively ignores all other
 	 * properties on this FactoryBean, reusing the shared common JDK {@link ForkJoinPool}
-	 * instead. This is a fine choice on JDK 8 but does remove the application's ability
+	 * instead. This is a fine choice but does remove the application's ability
 	 * to customize ForkJoinPool behavior, in particular the use of custom threads.
 	 * @since 3.2
 	 * @see java.util.concurrent.ForkJoinPool#commonPool()
@@ -135,7 +128,7 @@ public class ForkJoinPoolFactoryBean implements FactoryBean<ForkJoinPool>, Initi
 
 
 	@Override
-	public ForkJoinPool getObject() {
+	public @Nullable ForkJoinPool getObject() {
 		return this.forkJoinPool;
 	}
 
@@ -152,16 +145,18 @@ public class ForkJoinPoolFactoryBean implements FactoryBean<ForkJoinPool>, Initi
 
 	@Override
 	public void destroy() {
-		// Ignored for the common pool.
-		this.forkJoinPool.shutdown();
+		if (this.forkJoinPool != null) {
+			// Ignored for the common pool.
+			this.forkJoinPool.shutdown();
 
-		// Wait for all tasks to terminate - works for the common pool as well.
-		if (this.awaitTerminationSeconds > 0) {
-			try {
-				this.forkJoinPool.awaitTermination(this.awaitTerminationSeconds, TimeUnit.SECONDS);
-			}
-			catch (InterruptedException ex) {
-				Thread.currentThread().interrupt();
+			// Wait for all tasks to terminate - works for the common pool as well.
+			if (this.awaitTerminationSeconds > 0) {
+				try {
+					this.forkJoinPool.awaitTermination(this.awaitTerminationSeconds, TimeUnit.SECONDS);
+				}
+				catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+				}
 			}
 		}
 	}

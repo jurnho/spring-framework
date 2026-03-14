@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,10 +18,10 @@ package org.springframework.jdbc.config;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.config.AbstractFactoryBean;
@@ -72,26 +72,33 @@ public class SortedResourcesFactoryBean extends AbstractFactoryBean<Resource[]> 
 
 	@Override
 	protected Resource[] createInstance() throws Exception {
-		List<Resource> scripts = new ArrayList<Resource>();
+		List<Resource> result = new ArrayList<>();
 		for (String location : this.locations) {
-			List<Resource> resources = new ArrayList<Resource>(
-					Arrays.asList(this.resourcePatternResolver.getResources(location)));
-			Collections.sort(resources, new Comparator<Resource>() {
-				@Override
-				public int compare(Resource r1, Resource r2) {
-					try {
-						return r1.getURL().toString().compareTo(r2.getURL().toString());
-					}
-					catch (IOException ex) {
-						return 0;
-					}
-				}
-			});
+			Resource[] resources = this.resourcePatternResolver.getResources(location);
+
+			// Cache URLs to avoid repeated I/O during sorting
+			Map<Resource, String> urlCache = new LinkedHashMap<>(resources.length);
+			List<Resource> failingResources = new ArrayList<>();
 			for (Resource resource : resources) {
-				scripts.add(resource);
+				try {
+					urlCache.put(resource, resource.getURL().toString());
+				}
+				catch (IOException ex) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Failed to resolve " + resource + " for sorting purposes: " + ex);
+					}
+					failingResources.add(resource);
+				}
 			}
+
+			// Sort using cached URLs
+			List<Resource> sortedResources = new ArrayList<>(urlCache.keySet());
+			sortedResources.sort(Comparator.comparing(urlCache::get));
+
+			result.addAll(sortedResources);
+			result.addAll(failingResources);
 		}
-		return scripts.toArray(new Resource[scripts.size()]);
+		return result.toArray(new Resource[0]);
 	}
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,7 +19,12 @@ package org.springframework.core.io;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.Arrays;
+
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.util.Assert;
 
 /**
  * {@link Resource} implementation for a given byte array.
@@ -45,7 +50,7 @@ public class ByteArrayResource extends AbstractResource {
 
 
 	/**
-	 * Create a new ByteArrayResource.
+	 * Create a new {@code ByteArrayResource}.
 	 * @param byteArray the byte array to wrap
 	 */
 	public ByteArrayResource(byte[] byteArray) {
@@ -53,17 +58,16 @@ public class ByteArrayResource extends AbstractResource {
 	}
 
 	/**
-	 * Create a new ByteArrayResource.
+	 * Create a new {@code ByteArrayResource} with a description.
 	 * @param byteArray the byte array to wrap
 	 * @param description where the byte array comes from
 	 */
-	public ByteArrayResource(byte[] byteArray, String description) {
-		if (byteArray == null) {
-			throw new IllegalArgumentException("Byte array must not be null");
-		}
+	public ByteArrayResource(byte[] byteArray, @Nullable String description) {
+		Assert.notNull(byteArray, "Byte array must not be null");
 		this.byteArray = byteArray;
 		this.description = (description != null ? description : "");
 	}
+
 
 	/**
 	 * Return the underlying byte array.
@@ -71,7 +75,6 @@ public class ByteArrayResource extends AbstractResource {
 	public final byte[] getByteArray() {
 		return this.byteArray;
 	}
-
 
 	/**
 	 * This implementation always returns {@code true}.
@@ -99,6 +102,19 @@ public class ByteArrayResource extends AbstractResource {
 		return new ByteArrayInputStream(this.byteArray);
 	}
 
+	@Override
+	public byte[] getContentAsByteArray() throws IOException {
+		int length = this.byteArray.length;
+		byte[] result = new byte[length];
+		System.arraycopy(this.byteArray, 0, result, 0, length);
+		return result;
+	}
+
+	@Override
+	public String getContentAsString(Charset charset) throws IOException {
+		return new String(this.byteArray, charset);
+	}
+
 	/**
 	 * This implementation returns a description that includes the passed-in
 	 * {@code description}, if any.
@@ -114,9 +130,9 @@ public class ByteArrayResource extends AbstractResource {
 	 * @see java.util.Arrays#equals(byte[], byte[])
 	 */
 	@Override
-	public boolean equals(Object obj) {
-		return (obj == this ||
-			(obj instanceof ByteArrayResource && Arrays.equals(((ByteArrayResource) obj).byteArray, this.byteArray)));
+	public boolean equals(@Nullable Object other) {
+		return (this == other || (other instanceof ByteArrayResource that &&
+				Arrays.equals(this.byteArray, that.byteArray)));
 	}
 
 	/**
@@ -125,7 +141,7 @@ public class ByteArrayResource extends AbstractResource {
 	 */
 	@Override
 	public int hashCode() {
-		return (byte[].class.hashCode() * 29 * this.byteArray.length);
+		return Arrays.hashCode(this.byteArray);
 	}
 
 }

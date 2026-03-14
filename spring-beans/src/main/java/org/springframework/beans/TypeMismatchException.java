@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,9 @@ package org.springframework.beans;
 
 import java.beans.PropertyChangeEvent;
 
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 
 /**
@@ -35,13 +38,15 @@ public class TypeMismatchException extends PropertyAccessException {
 	public static final String ERROR_CODE = "typeMismatch";
 
 
-	private transient Object value;
+	private @Nullable String propertyName;
 
-	private Class<?> requiredType;
+	private final transient @Nullable Object value;
+
+	private final @Nullable Class<?> requiredType;
 
 
 	/**
-	 * Create a new TypeMismatchException.
+	 * Create a new {@code TypeMismatchException}.
 	 * @param propertyChangeEvent the PropertyChangeEvent that resulted in the problem
 	 * @param requiredType the required target type
 	 */
@@ -50,42 +55,49 @@ public class TypeMismatchException extends PropertyAccessException {
 	}
 
 	/**
-	 * Create a new TypeMismatchException.
+	 * Create a new {@code TypeMismatchException}.
 	 * @param propertyChangeEvent the PropertyChangeEvent that resulted in the problem
 	 * @param requiredType the required target type (or {@code null} if not known)
 	 * @param cause the root cause (may be {@code null})
 	 */
-	public TypeMismatchException(PropertyChangeEvent propertyChangeEvent, Class<?> requiredType, Throwable cause) {
+	public TypeMismatchException(PropertyChangeEvent propertyChangeEvent, @Nullable Class<?> requiredType,
+			@Nullable Throwable cause) {
+
 		super(propertyChangeEvent,
-				"Failed to convert property value of type [" +
-				ClassUtils.getDescriptiveType(propertyChangeEvent.getNewValue()) + "]" +
+				"Failed to convert property value of type '" +
+				ClassUtils.getDescriptiveType(propertyChangeEvent.getNewValue()) + "'" +
 				(requiredType != null ?
-				 " to required type [" + ClassUtils.getQualifiedName(requiredType) + "]" : "") +
+				" to required type '" + ClassUtils.getQualifiedName(requiredType) + "'" : "") +
 				(propertyChangeEvent.getPropertyName() != null ?
-				 " for property '" + propertyChangeEvent.getPropertyName() + "'" : ""),
+				" for property '" + propertyChangeEvent.getPropertyName() + "'" : "") +
+				(cause != null ? "; " + cause.getMessage() : ""),
 				cause);
+		this.propertyName = propertyChangeEvent.getPropertyName();
 		this.value = propertyChangeEvent.getNewValue();
 		this.requiredType = requiredType;
 	}
 
 	/**
-	 * Create a new TypeMismatchException without PropertyChangeEvent.
+	 * Create a new {@code TypeMismatchException} without a {@code PropertyChangeEvent}.
 	 * @param value the offending value that couldn't be converted (may be {@code null})
 	 * @param requiredType the required target type (or {@code null} if not known)
+	 * @see #initPropertyName
 	 */
-	public TypeMismatchException(Object value, Class<?> requiredType) {
+	public TypeMismatchException(@Nullable Object value, @Nullable Class<?> requiredType) {
 		this(value, requiredType, null);
 	}
 
 	/**
-	 * Create a new TypeMismatchException without PropertyChangeEvent.
+	 * Create a new {@code TypeMismatchException} without a {@code PropertyChangeEvent}.
 	 * @param value the offending value that couldn't be converted (may be {@code null})
 	 * @param requiredType the required target type (or {@code null} if not known)
 	 * @param cause the root cause (may be {@code null})
+	 * @see #initPropertyName
 	 */
-	public TypeMismatchException(Object value, Class<?> requiredType, Throwable cause) {
-		super("Failed to convert value of type [" + ClassUtils.getDescriptiveType(value) + "]" +
-				(requiredType != null ? " to required type [" + ClassUtils.getQualifiedName(requiredType) + "]" : ""),
+	public TypeMismatchException(@Nullable Object value, @Nullable Class<?> requiredType, @Nullable Throwable cause) {
+		super("Failed to convert value of type '" + ClassUtils.getDescriptiveType(value) + "'" +
+				(requiredType != null ? " to required type '" + ClassUtils.getQualifiedName(requiredType) + "'" : "") +
+				(cause != null ? "; " + cause.getMessage() : ""),
 				cause);
 		this.value = value;
 		this.requiredType = requiredType;
@@ -93,17 +105,38 @@ public class TypeMismatchException extends PropertyAccessException {
 
 
 	/**
+	 * Initialize this exception's property name for exposure through {@link #getPropertyName()},
+	 * as an alternative to having it initialized via a {@link PropertyChangeEvent}.
+	 * @param propertyName the property name to expose
+	 * @since 5.0.4
+	 * @see #TypeMismatchException(Object, Class)
+	 * @see #TypeMismatchException(Object, Class, Throwable)
+	 */
+	public void initPropertyName(String propertyName) {
+		Assert.state(this.propertyName == null, "Property name already initialized");
+		this.propertyName = propertyName;
+	}
+
+	/**
+	 * Return the name of the affected property, if available.
+	 */
+	@Override
+	public @Nullable String getPropertyName() {
+		return this.propertyName;
+	}
+
+	/**
 	 * Return the offending value (may be {@code null}).
 	 */
 	@Override
-	public Object getValue() {
+	public @Nullable Object getValue() {
 		return this.value;
 	}
 
 	/**
 	 * Return the required target type, if any.
 	 */
-	public Class<?> getRequiredType() {
+	public @Nullable Class<?> getRequiredType() {
 		return this.requiredType;
 	}
 

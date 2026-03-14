@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,10 @@
 
 package org.springframework.mail.javamail;
 
-import javax.activation.FileTypeMap;
-import javax.mail.Session;
-import javax.mail.internet.MimeMessage;
+import jakarta.activation.FileTypeMap;
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Special subclass of the standard JavaMail {@link MimeMessage}, carrying a
@@ -32,14 +33,14 @@ import javax.mail.internet.MimeMessage;
  * @author Juergen Hoeller
  * @since 1.2
  * @see JavaMailSenderImpl#createMimeMessage()
- * @see MimeMessageHelper#getDefaultEncoding(javax.mail.internet.MimeMessage)
- * @see MimeMessageHelper#getDefaultFileTypeMap(javax.mail.internet.MimeMessage)
+ * @see MimeMessageHelper#getDefaultEncoding(jakarta.mail.internet.MimeMessage)
+ * @see MimeMessageHelper#getDefaultFileTypeMap(jakarta.mail.internet.MimeMessage)
  */
 class SmartMimeMessage extends MimeMessage {
 
-	private final String defaultEncoding;
+	private final @Nullable String defaultEncoding;
 
-	private final FileTypeMap defaultFileTypeMap;
+	private final @Nullable FileTypeMap defaultFileTypeMap;
 
 
 	/**
@@ -48,7 +49,9 @@ class SmartMimeMessage extends MimeMessage {
 	 * @param defaultEncoding the default encoding, or {@code null} if none
 	 * @param defaultFileTypeMap the default FileTypeMap, or {@code null} if none
 	 */
-	public SmartMimeMessage(Session session, String defaultEncoding, FileTypeMap defaultFileTypeMap) {
+	public SmartMimeMessage(
+			Session session, @Nullable String defaultEncoding, @Nullable FileTypeMap defaultFileTypeMap) {
+
 		super(session);
 		this.defaultEncoding = defaultEncoding;
 		this.defaultFileTypeMap = defaultFileTypeMap;
@@ -58,14 +61,14 @@ class SmartMimeMessage extends MimeMessage {
 	/**
 	 * Return the default encoding of this message, or {@code null} if none.
 	 */
-	public final String getDefaultEncoding() {
+	public final @Nullable String getDefaultEncoding() {
 		return this.defaultEncoding;
 	}
 
 	/**
 	 * Return the default FileTypeMap of this message, or {@code null} if none.
 	 */
-	public final FileTypeMap getDefaultFileTypeMap() {
+	public final @Nullable FileTypeMap getDefaultFileTypeMap() {
 		return this.defaultFileTypeMap;
 	}
 

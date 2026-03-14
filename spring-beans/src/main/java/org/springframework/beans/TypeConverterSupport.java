@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,9 +18,13 @@ package org.springframework.beans;
 
 import java.lang.reflect.Field;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.MethodParameter;
 import org.springframework.core.convert.ConversionException;
 import org.springframework.core.convert.ConverterNotFoundException;
+import org.springframework.core.convert.TypeDescriptor;
+import org.springframework.util.Assert;
 
 /**
  * Base implementation of the {@link TypeConverter} interface, using a package-private delegate.
@@ -32,48 +36,49 @@ import org.springframework.core.convert.ConverterNotFoundException;
  */
 public abstract class TypeConverterSupport extends PropertyEditorRegistrySupport implements TypeConverter {
 
-	TypeConverterDelegate typeConverterDelegate;
+	@Nullable TypeConverterDelegate typeConverterDelegate;
 
 
 	@Override
-	public <T> T convertIfNecessary(Object value, Class<T> requiredType) throws TypeMismatchException {
-		return doConvert(value, requiredType, null, null);
+	public <T> @Nullable T convertIfNecessary(@Nullable Object value, @Nullable Class<T> requiredType) throws TypeMismatchException {
+		return convertIfNecessary(null, value, requiredType, TypeDescriptor.valueOf(requiredType));
 	}
 
 	@Override
-	public <T> T convertIfNecessary(Object value, Class<T> requiredType, MethodParameter methodParam)
-			throws TypeMismatchException {
+	public <T> @Nullable T convertIfNecessary(@Nullable Object value, @Nullable Class<T> requiredType,
+			@Nullable MethodParameter methodParam) throws TypeMismatchException {
 
-		return doConvert(value, requiredType, methodParam, null);
+		return convertIfNecessary((methodParam != null ? methodParam.getParameterName() : null), value, requiredType,
+				(methodParam != null ? new TypeDescriptor(methodParam) : TypeDescriptor.valueOf(requiredType)));
 	}
 
 	@Override
-	public <T> T convertIfNecessary(Object value, Class<T> requiredType, Field field)
+	public <T> @Nullable T convertIfNecessary(@Nullable Object value, @Nullable Class<T> requiredType, @Nullable Field field)
 			throws TypeMismatchException {
 
-		return doConvert(value, requiredType, null, field);
+		return convertIfNecessary((field != null ? field.getName() : null), value, requiredType,
+				(field != null ? new TypeDescriptor(field) : TypeDescriptor.valueOf(requiredType)));
 	}
 
-	private <T> T doConvert(Object value, Class<T> requiredType, MethodParameter methodParam, Field field)
-			throws TypeMismatchException {
+	@Override
+	public <T> @Nullable T convertIfNecessary(@Nullable Object value, @Nullable Class<T> requiredType,
+			@Nullable TypeDescriptor typeDescriptor) throws TypeMismatchException {
+
+		return convertIfNecessary(null, value, requiredType, typeDescriptor);
+	}
+
+	private <T> @Nullable T convertIfNecessary(@Nullable String propertyName, @Nullable Object value,
+			@Nullable Class<T> requiredType, @Nullable TypeDescriptor typeDescriptor) throws TypeMismatchException {
+
+		Assert.state(this.typeConverterDelegate != null, "No TypeConverterDelegate");
 		try {
-			if (field != null) {
-				return this.typeConverterDelegate.convertIfNecessary(value, requiredType, field);
-			}
-			else {
-				return this.typeConverterDelegate.convertIfNecessary(value, requiredType, methodParam);
-			}
+			return this.typeConverterDelegate.convertIfNecessary(
+					propertyName, null, value, requiredType, typeDescriptor);
 		}
-		catch (ConverterNotFoundException ex) {
+		catch (ConverterNotFoundException | IllegalStateException ex) {
 			throw new ConversionNotSupportedException(value, requiredType, ex);
 		}
-		catch (ConversionException ex) {
-			throw new TypeMismatchException(value, requiredType, ex);
-		}
-		catch (IllegalStateException ex) {
-			throw new ConversionNotSupportedException(value, requiredType, ex);
-		}
-		catch (IllegalArgumentException ex) {
+		catch (ConversionException | IllegalArgumentException ex) {
 			throw new TypeMismatchException(value, requiredType, ex);
 		}
 	}

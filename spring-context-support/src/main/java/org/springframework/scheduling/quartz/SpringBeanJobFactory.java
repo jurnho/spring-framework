@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,12 +16,15 @@
 
 package org.springframework.scheduling.quartz;
 
+import org.jspecify.annotations.Nullable;
 import org.quartz.SchedulerContext;
 import org.quartz.spi.TriggerFiredBundle;
 
 import org.springframework.beans.BeanWrapper;
 import org.springframework.beans.MutablePropertyValues;
 import org.springframework.beans.PropertyAccessorFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 
 /**
  * Subclass of {@link AdaptableJobFactory} that also supports Spring-style
@@ -33,18 +36,21 @@ import org.springframework.beans.PropertyAccessorFactory;
  * as bean property values. If no matching bean property is found, the entry
  * is by default simply ignored. This is analogous to QuartzJobBean's behavior.
  *
- * <p>Compatible with Quartz 2.1.4 and higher, as of Spring 4.1.
+ * <p>Compatible with Quartz 2.1.4 and higher.
  *
  * @author Juergen Hoeller
  * @since 2.0
  * @see SchedulerFactoryBean#setJobFactory
  * @see QuartzJobBean
  */
-public class SpringBeanJobFactory extends AdaptableJobFactory implements SchedulerContextAware {
+public class SpringBeanJobFactory extends AdaptableJobFactory
+		implements ApplicationContextAware, SchedulerContextAware {
 
-	private String[] ignoredUnknownProperties;
+	private String @Nullable [] ignoredUnknownProperties;
 
-	private SchedulerContext schedulerContext;
+	private @Nullable ApplicationContext applicationContext;
+
+	private @Nullable SchedulerContext schedulerContext;
 
 
 	/**
@@ -60,6 +66,11 @@ public class SpringBeanJobFactory extends AdaptableJobFactory implements Schedul
 	}
 
 	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) {
+		this.applicationContext = applicationContext;
+	}
+
+	@Override
 	public void setSchedulerContext(SchedulerContext schedulerContext) {
 		this.schedulerContext = schedulerContext;
 	}
@@ -71,7 +82,10 @@ public class SpringBeanJobFactory extends AdaptableJobFactory implements Schedul
 	 */
 	@Override
 	protected Object createJobInstance(TriggerFiredBundle bundle) throws Exception {
-		Object job = super.createJobInstance(bundle);
+		Object job = (this.applicationContext != null ?
+				this.applicationContext.getAutowireCapableBeanFactory().createBean(bundle.getJobDetail().getJobClass()) :
+				super.createJobInstance(bundle));
+
 		if (isEligibleForPropertyPopulation(job)) {
 			BeanWrapper bw = PropertyAccessorFactory.forBeanPropertyAccess(job);
 			MutablePropertyValues pvs = new MutablePropertyValues();
@@ -92,6 +106,7 @@ public class SpringBeanJobFactory extends AdaptableJobFactory implements Schedul
 				bw.setPropertyValues(pvs, true);
 			}
 		}
+
 		return job;
 	}
 

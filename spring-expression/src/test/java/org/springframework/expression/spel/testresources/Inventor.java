@@ -1,17 +1,36 @@
+/*
+ * Copyright 2002-present the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.springframework.expression.spel.testresources;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.util.ObjectUtils;
 
 ///CLOVER:OFF
 @SuppressWarnings("unused")
 public class Inventor {
+
 	private String name;
 	public String _name;
 	public String _name_;
@@ -25,16 +44,16 @@ public class Inventor {
 	public Map<String,String> testMap;
 	private boolean wonNobelPrize;
 	private PlaceOfBirth[] placesLived;
-	private List<PlaceOfBirth> placesLivedList = new ArrayList<PlaceOfBirth>();
+	private List<PlaceOfBirth> placesLivedList = new ArrayList<>();
 	public ArrayContainer arrayContainer;
 	public boolean publicBoolean;
 	private boolean accessedThroughGetSet;
-	public List<Integer> listOfInteger = new ArrayList<Integer>();
-	public List<Boolean> booleanList = new ArrayList<Boolean>();
-	public Map<String,Boolean> mapOfStringToBoolean = new LinkedHashMap<String,Boolean>();
-	public Map<Integer,String> mapOfNumbersUpToTen = new LinkedHashMap<Integer,String>();
-	public List<Integer> listOfNumbersUpToTen = new ArrayList<Integer>();
-	public List<Integer> listOneFive = new ArrayList<Integer>();
+	public List<Integer> listOfInteger = new ArrayList<>();
+	public List<Boolean> booleanList = new ArrayList<>();
+	public Map<String,Boolean> mapOfStringToBoolean = new LinkedHashMap<>();
+	public Map<Integer,String> mapOfNumbersUpToTen = new LinkedHashMap<>();
+	public List<Integer> listOfNumbersUpToTen = new ArrayList<>();
+	public List<Integer> listOneFive = new ArrayList<>();
 	public String[] stringArrayOfThreeItems = new String[]{"1","2","3"};
 	private String foo;
 	public int counter;
@@ -46,7 +65,7 @@ public class Inventor {
 		this.birthdate = birthdate;
 		this.nationality = nationality;
 		this.arrayContainer = new ArrayContainer();
-		testMap = new HashMap<String,String>();
+		testMap = new HashMap<>();
 		testMap.put("monday", "montag");
 		testMap.put("tuesday", "dienstag");
 		testMap.put("wednesday", "mittwoch");
@@ -90,7 +109,7 @@ public class Inventor {
 		return inventions;
 	}
 
-	public void setInventions(String[] inventions) {
+	public void setInventions(String... inventions) {
 		this.inventions = inventions;
 	}
 
@@ -100,23 +119,23 @@ public class Inventor {
 
 	public int throwException(int valueIn) throws Exception {
 		counter++;
-		if (valueIn==1) {
-			throw new IllegalArgumentException("IllegalArgumentException for 1");
-		}
-		if (valueIn==2) {
-			throw new RuntimeException("RuntimeException for 2");
-		}
-		if (valueIn==4) {
-			throw new TestException();
+		switch (valueIn) {
+			case 1 -> throw new IllegalArgumentException("IllegalArgumentException for 1");
+			case 2 -> throw new RuntimeException("RuntimeException for 2");
+			case 4 -> throw new TestException();
 		}
 		return valueIn;
 	}
 
 	@SuppressWarnings("serial")
-	static class TestException extends Exception {}
+	public static class TestException extends Exception {}
 
 	public String throwException(PlaceOfBirth pob) {
 		return pob.getCity();
+	}
+
+	public void setName(String name) {
+		this.name = name;
 	}
 
 	public String getName() {
@@ -164,7 +183,7 @@ public class Inventor {
 	}
 
 	public List<String> getDoublesAsStringList() {
-		List<String> result = new ArrayList<String>();
+		List<String> result = new ArrayList<>();
 		result.add("14.35");
 		result.add("15.45");
 		return result;
@@ -174,20 +193,43 @@ public class Inventor {
 		return a + b + c;
 	}
 
-	public int aVarargsMethod(String... strings) {
-		if (strings == null)
-			return 0;
-		return strings.length;
+	public String aVarargsMethod(String... strings) {
+		return Arrays.toString(strings);
 	}
 
-	public int aVarargsMethod2(int i, String... strings) {
-		if (strings == null)
-			return i;
-		return strings.length + i;
+	public String aVarargsMethod2(int i, String... strings) {
+		return i + "-" + Arrays.toString(strings);
 	}
+
+	@SuppressWarnings("unchecked")
+	public String optionalVarargsMethod(Optional<String>... values) {
+		return Arrays.toString(values);
+	}
+
+	public String aVarargsMethod3(String str1, String... strings) {
+		if (ObjectUtils.isEmpty(strings)) {
+			return str1;
+		}
+		return str1 + "-" + String.join("-", strings);
+	}
+
+	public String formatObjectVarargs(String format, Object... args) {
+		return String.format(format, args);
+	}
+
+	public String formatPrimitiveVarargs(String format, int... nums) {
+		Object[] args = new Object[nums.length];
+		for (int i = 0; i < nums.length; i++) {
+			args[i] = nums[i];
+		}
+		return String.format(format, args);
+	}
+
 
 	public Inventor(String... strings) {
-
+		if (strings.length > 0) {
+			this.name = strings[0];
+		}
 	}
 
 	public boolean getSomeProperty() {

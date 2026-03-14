@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,6 +22,9 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.cache.Cache;
@@ -34,13 +37,15 @@ import org.springframework.core.serializer.support.SerializationDelegate;
  * the set of cache names is pre-defined through {@link #setCacheNames}, with no
  * dynamic creation of further cache regions at runtime.
  *
+ * <p>Supports the asynchronous {@link Cache#retrieve(Object)} and
+ * {@link Cache#retrieve(Object, Supplier)} operations through basic
+ * {@code CompletableFuture} adaptation, with early-determined cache misses.
+ *
  * <p>Note: This is by no means a sophisticated CacheManager; it comes with no
  * cache configuration options. However, it may be useful for testing or simple
  * caching scenarios. For advanced local caching needs, consider
- * {@link org.springframework.cache.jcache.JCacheCacheManager},
- * {@link org.springframework.cache.ehcache.EhCacheCacheManager},
- * {@link com.github.benmanes.caffeine.cache.CaffeineCacheManager} or
- * {@link org.springframework.cache.guava.GuavaCacheManager}.
+ * {@link org.springframework.cache.caffeine.CaffeineCacheManager} or
+ * {@link org.springframework.cache.jcache.JCacheCacheManager}.
  *
  * @author Juergen Hoeller
  * @since 3.1
@@ -48,15 +53,15 @@ import org.springframework.core.serializer.support.SerializationDelegate;
  */
 public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderAware {
 
-	private final ConcurrentMap<String, Cache> cacheMap = new ConcurrentHashMap<String, Cache>(16);
+	private final ConcurrentMap<String, Cache> cacheMap = new ConcurrentHashMap<>(16);
 
-	private boolean dynamic = true;
+	private volatile boolean dynamic = true;
 
 	private boolean allowNullValues = true;
 
 	private boolean storeByValue = false;
 
-	private SerializationDelegate serialization;
+	private @Nullable SerializationDelegate serialization;
 
 
 	/**
@@ -77,12 +82,17 @@ public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderA
 
 	/**
 	 * Specify the set of cache names for this CacheManager's 'static' mode.
-	 * <p>The number of caches and their names will be fixed after a call to this method,
-	 * with no creation of further cache regions at runtime.
-	 * <p>Calling this with a {@code null} collection argument resets the
-	 * mode to 'dynamic', allowing for further creation of caches again.
+	 * <p>The number of caches and their names will be fixed after a call
+	 * to this method, with no creation of further cache regions at runtime.
+	 * <p>Note that this method replaces existing caches of the given names
+	 * and prevents the creation of further cache regions from here on - but
+	 * does <i>not</i> remove unrelated existing caches. For a full reset,
+	 * consider calling {@link #resetCaches()} before calling this method.
+	 * <p>Calling this method with a {@code null} collection argument resets
+	 * the mode to 'dynamic', allowing for further creation of caches again.
+	 * @see #resetCaches()
 	 */
-	public void setCacheNames(Collection<String> cacheNames) {
+	public void setCacheNames(@Nullable Collection<String> cacheNames) {
 		if (cacheNames != null) {
 			for (String name : cacheNames) {
 				this.cacheMap.put(name, createConcurrentMapCache(name));
@@ -106,9 +116,7 @@ public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderA
 		if (allowNullValues != this.allowNullValues) {
 			this.allowNullValues = allowNullValues;
 			// Need to recreate all Cache instances with the new null-value configuration...
-			for (Map.Entry<String, Cache> entry : this.cacheMap.entrySet()) {
-				entry.setValue(createConcurrentMapCache(entry.getKey()));
-			}
+			recreateCaches();
 		}
 	}
 
@@ -127,14 +135,13 @@ public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderA
 	 * contract is required on cached values.
 	 * <p>Note: A change of the store-by-value setting will reset all existing caches,
 	 * if any, to reconfigure them with the new store-by-value requirement.
+	 * @since 4.3
 	 */
 	public void setStoreByValue(boolean storeByValue) {
 		if (storeByValue != this.storeByValue) {
 			this.storeByValue = storeByValue;
 			// Need to recreate all Cache instances with the new store-by-value configuration...
-			for (Map.Entry<String, Cache> entry : this.cacheMap.entrySet()) {
-				entry.setValue(createConcurrentMapCache(entry.getKey()));
-			}
+			recreateCaches();
 		}
 	}
 
@@ -142,6 +149,7 @@ public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderA
 	 * Return whether this cache manager stores a copy of each entry or
 	 * a reference for all its caches. If store by value is enabled, any
 	 * cache entry must be serializable.
+	 * @since 4.3
 	 */
 	public boolean isStoreByValue() {
 		return this.storeByValue;
@@ -150,6 +158,20 @@ public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderA
 	@Override
 	public void setBeanClassLoader(ClassLoader classLoader) {
 		this.serialization = new SerializationDelegate(classLoader);
+		// Need to recreate all Cache instances with new ClassLoader in store-by-value mode...
+		if (isStoreByValue()) {
+			recreateCaches();
+		}
+	}
+
+
+	@Override
+	public @Nullable Cache getCache(String name) {
+		Cache cache = this.cacheMap.get(name);
+		if (cache == null && this.dynamic) {
+			cache = this.cacheMap.computeIfAbsent(name, this::createConcurrentMapCache);
+		}
+		return cache;
 	}
 
 	@Override
@@ -157,19 +179,32 @@ public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderA
 		return Collections.unmodifiableSet(this.cacheMap.keySet());
 	}
 
+	/**
+	 * Reset this cache manager's caches, removing them completely for on-demand
+	 * re-creation in 'dynamic' mode, or simply clearing their entries otherwise.
+	 * @since 6.2.14
+	 */
 	@Override
-	public Cache getCache(String name) {
-		Cache cache = this.cacheMap.get(name);
-		if (cache == null && this.dynamic) {
-			synchronized (this.cacheMap) {
-				cache = this.cacheMap.get(name);
-				if (cache == null) {
-					cache = createConcurrentMapCache(name);
-					this.cacheMap.put(name, cache);
-				}
-			}
+	public void resetCaches() {
+		this.cacheMap.values().forEach(Cache::clear);
+		if (this.dynamic) {
+			this.cacheMap.clear();
 		}
-		return cache;
+	}
+
+	/**
+	 * Remove the specified cache from this cache manager.
+	 * @param name the name of the cache
+	 * @since 6.1.15
+	 */
+	public void removeCache(String name) {
+		this.cacheMap.remove(name);
+	}
+
+	private void recreateCaches() {
+		for (Map.Entry<String, Cache> entry : this.cacheMap.entrySet()) {
+			entry.setValue(createConcurrentMapCache(entry.getKey()));
+		}
 	}
 
 	/**
@@ -178,11 +213,8 @@ public class ConcurrentMapCacheManager implements CacheManager, BeanClassLoaderA
 	 * @return the ConcurrentMapCache (or a decorator thereof)
 	 */
 	protected Cache createConcurrentMapCache(String name) {
-		SerializationDelegate actualSerialization =
-				this.storeByValue ? this.serialization : null;
-		return new ConcurrentMapCache(name, new ConcurrentHashMap<Object, Object>(256),
-				isAllowNullValues(), actualSerialization);
-
+		SerializationDelegate actualSerialization = (isStoreByValue() ? this.serialization : null);
+		return new ConcurrentMapCache(name, new ConcurrentHashMap<>(256), isAllowNullValues(), actualSerialization);
 	}
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,21 +21,29 @@ import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
-import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpServletResponseWrapper;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.WriteListener;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponseWrapper;
+import org.jspecify.annotations.Nullable;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.util.FastByteArrayOutputStream;
 
 /**
- * {@link javax.servlet.http.HttpServletResponse} wrapper that caches all content written to
+ * {@link jakarta.servlet.http.HttpServletResponse} wrapper that caches all content written to
  * the {@linkplain #getOutputStream() output stream} and {@linkplain #getWriter() writer},
- * and allows this content to be retrieved via a {@link #getContentAsByteArray() byte array}.
+ * and allows this content to be retrieved via a {@linkplain #getContentAsByteArray() byte array}.
  *
- * <p>Used e.g. by {@link org.springframework.web.filter.ShallowEtagHeaderFilter}.
+ * <p>Used, for example, by {@link org.springframework.web.filter.ShallowEtagHeaderFilter}.
  *
  * @author Juergen Hoeller
+ * @author Sam Brannen
  * @since 4.1.3
  * @see ContentCachingRequestWrapper
  */
@@ -43,13 +51,11 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 
 	private final FastByteArrayOutputStream content = new FastByteArrayOutputStream(1024);
 
-	private final ServletOutputStream outputStream = new ResponseServletOutputStream();
+	private @Nullable ServletOutputStream outputStream;
 
-	private PrintWriter writer;
+	private @Nullable PrintWriter writer;
 
-	private int statusCode = HttpServletResponse.SC_OK;
-
-	private Integer contentLength;
+	private @Nullable Integer contentLength;
 
 
 	/**
@@ -62,19 +68,6 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 
 
 	@Override
-	public void setStatus(int sc) {
-		super.setStatus(sc);
-		this.statusCode = sc;
-	}
-
-	@SuppressWarnings("deprecation")
-	@Override
-	public void setStatus(int sc, String sm) {
-		super.setStatus(sc, sm);
-		this.statusCode = sc;
-	}
-
-	@Override
 	public void sendError(int sc) throws IOException {
 		copyBodyToResponse(false);
 		try {
@@ -84,11 +77,9 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 			// Possibly on Tomcat when called too late: fall back to silent setStatus
 			super.setStatus(sc);
 		}
-		this.statusCode = sc;
 	}
 
 	@Override
-	@SuppressWarnings("deprecation")
 	public void sendError(int sc, String msg) throws IOException {
 		copyBodyToResponse(false);
 		try {
@@ -96,9 +87,8 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 		}
 		catch (IllegalStateException ex) {
 			// Possibly on Tomcat when called too late: fall back to silent setStatus
-			super.setStatus(sc, msg);
+			super.setStatus(sc);
 		}
-		this.statusCode = sc;
 	}
 
 	@Override
@@ -109,6 +99,9 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 
 	@Override
 	public ServletOutputStream getOutputStream() throws IOException {
+		if (this.outputStream == null) {
+			this.outputStream = new ResponseServletOutputStream(getResponse().getOutputStream());
+		}
 		return this.outputStream;
 	}
 
@@ -122,9 +115,16 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 		return this.writer;
 	}
 
+	/**
+	 * This method neither flushes content to the client nor commits the underlying
+	 * response, since the content has not yet been copied to the response.
+	 * <p>Invoke {@link #copyBodyToResponse()} to copy the cached body content to
+	 * the wrapped response object and flush its buffer.
+	 * @see jakarta.servlet.ServletResponseWrapper#flushBuffer()
+	 */
 	@Override
 	public void flushBuffer() throws IOException {
-		// do not flush the underlying response as the content as not been copied to it yet
+		// no-op
 	}
 
 	@Override
@@ -135,17 +135,106 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 		this.contentLength = len;
 	}
 
-	// Overrides Servlet 3.1 setContentLengthLong(long) at runtime
+	@Override
 	public void setContentLengthLong(long len) {
-		if (len > Integer.MAX_VALUE) {
+		setContentLength(toContentLengthInt(len));
+	}
+
+	private int toContentLengthInt(long contentLength) {
+		if (contentLength > Integer.MAX_VALUE) {
 			throw new IllegalArgumentException("Content-Length exceeds ContentCachingResponseWrapper's maximum (" +
-					Integer.MAX_VALUE + "): " + len);
+					Integer.MAX_VALUE + "): " + contentLength);
 		}
-		int lenInt = (int) len;
-		if (lenInt > this.content.size()) {
-			this.content.resize(lenInt);
+		return (int) contentLength;
+	}
+
+	@Override
+	public boolean containsHeader(String name) {
+		if (this.contentLength != null && HttpHeaders.CONTENT_LENGTH.equalsIgnoreCase(name)) {
+			return true;
 		}
-		this.contentLength = lenInt;
+		else {
+			return super.containsHeader(name);
+		}
+	}
+
+	@Override
+	public void setHeader(String name, String value) {
+		if (HttpHeaders.CONTENT_LENGTH.equalsIgnoreCase(name)) {
+			if (value != null) {
+				this.contentLength = toContentLengthInt(Long.parseLong(value));
+			}
+			else {
+				this.contentLength = null;
+				super.setHeader(name, null);
+			}
+		}
+		else {
+			super.setHeader(name, value);
+		}
+	}
+
+	@Override
+	public void addHeader(String name, String value) {
+		if (HttpHeaders.CONTENT_LENGTH.equalsIgnoreCase(name)) {
+			this.contentLength = toContentLengthInt(Long.parseLong(value));
+		}
+		else {
+			super.addHeader(name, value);
+		}
+	}
+
+	@Override
+	public void setIntHeader(String name, int value) {
+		if (HttpHeaders.CONTENT_LENGTH.equalsIgnoreCase(name)) {
+			this.contentLength = value;
+		}
+		else {
+			super.setIntHeader(name, value);
+		}
+	}
+
+	@Override
+	public void addIntHeader(String name, int value) {
+		if (HttpHeaders.CONTENT_LENGTH.equalsIgnoreCase(name)) {
+			this.contentLength = value;
+		}
+		else {
+			super.addIntHeader(name, value);
+		}
+	}
+
+	@Override
+	public @Nullable String getHeader(String name) {
+		if (this.contentLength != null && HttpHeaders.CONTENT_LENGTH.equalsIgnoreCase(name)) {
+			return this.contentLength.toString();
+		}
+		else {
+			return super.getHeader(name);
+		}
+	}
+
+	@Override
+	public Collection<String> getHeaders(String name) {
+		if (this.contentLength != null && HttpHeaders.CONTENT_LENGTH.equalsIgnoreCase(name)) {
+			return Collections.singleton(this.contentLength.toString());
+		}
+		else {
+			return super.getHeaders(name);
+		}
+	}
+
+	@Override
+	public Collection<String> getHeaderNames() {
+		Collection<String> headerNames = super.getHeaderNames();
+		if (this.contentLength != null) {
+			Set<String> result = new LinkedHashSet<>(headerNames);
+			result.add(HttpHeaders.CONTENT_LENGTH);
+			return result;
+		}
+		else {
+			return headerNames;
+		}
 	}
 
 	@Override
@@ -164,13 +253,6 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 	public void reset() {
 		super.reset();
 		this.content.reset();
-	}
-
-	/**
-	 * Return the status code as specified on the response.
-	 */
-	public int getStatusCode() {
-		return this.statusCode;
 	}
 
 	/**
@@ -213,9 +295,13 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 	protected void copyBodyToResponse(boolean complete) throws IOException {
 		if (this.content.size() > 0) {
 			HttpServletResponse rawResponse = (HttpServletResponse) getResponse();
-			if ((complete || this.contentLength != null) && !rawResponse.isCommitted()) {
-				rawResponse.setContentLength(complete ? this.content.size() : this.contentLength);
-				this.contentLength = null;
+			if (!rawResponse.isCommitted()) {
+				if (complete || this.contentLength != null) {
+					if (rawResponse.getHeader(HttpHeaders.TRANSFER_ENCODING) == null) {
+						rawResponse.setContentLength(complete ? this.content.size() : this.contentLength);
+					}
+					this.contentLength = null;
+				}
 			}
 			this.content.writeTo(rawResponse.getOutputStream());
 			this.content.reset();
@@ -228,6 +314,12 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 
 	private class ResponseServletOutputStream extends ServletOutputStream {
 
+		private final ServletOutputStream os;
+
+		public ResponseServletOutputStream(ServletOutputStream os) {
+			this.os = os;
+		}
+
 		@Override
 		public void write(int b) throws IOException {
 			content.write(b);
@@ -236,6 +328,16 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 		@Override
 		public void write(byte[] b, int off, int len) throws IOException {
 			content.write(b, off, len);
+		}
+
+		@Override
+		public boolean isReady() {
+			return this.os.isReady();
+		}
+
+		@Override
+		public void setWriteListener(WriteListener writeListener) {
+			this.os.setWriteListener(writeListener);
 		}
 	}
 
@@ -247,7 +349,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 		}
 
 		@Override
-		public void write(char buf[], int off, int len) {
+		public void write(char[] buf, int off, int len) {
 			super.write(buf, off, len);
 			super.flush();
 		}

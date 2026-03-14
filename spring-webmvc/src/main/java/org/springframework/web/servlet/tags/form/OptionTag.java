@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,16 +16,17 @@
 
 package org.springframework.web.servlet.tags.form;
 
-import javax.servlet.jsp.JspException;
-import javax.servlet.jsp.tagext.BodyContent;
-import javax.servlet.jsp.tagext.BodyTag;
+import jakarta.servlet.jsp.JspException;
+import jakarta.servlet.jsp.tagext.BodyContent;
+import jakarta.servlet.jsp.tagext.BodyTag;
+import org.jspecify.annotations.Nullable;
 
-import org.springframework.util.Assert;
 import org.springframework.web.servlet.support.BindStatus;
 import org.springframework.web.util.TagUtils;
 
 /**
- * JSP tag for rendering an HTML '{@code option}' tag.
+ * The {@code <option>} tag renders a single HTML 'option'. Sets 'selected' as
+ * appropriate based on bound value.
  *
  * <p><b>Must be used nested inside a {@link SelectTag}.</b>
  *
@@ -41,6 +42,154 @@ import org.springframework.web.util.TagUtils;
  * '{@code option}' tag. If no {@link #setLabel label} is specified
  * then the {@link #setValue value} property will be used when rendering
  * the inner text.
+ *
+ * <h3>Attribute Summary</h3>
+ * <table>
+ * <thead>
+ * <tr>
+ * <th class="table-header col-first">Attribute</th>
+ * <th class="table-header col-second">Required?</th>
+ * <th class="table-header col-second">Runtime Expression?</th>
+ * <th class="table-header col-last">Description</th>
+ * </tr>
+ * </thead>
+ * <tbody>
+ * <tr class="even-row-color">
+ * <td><p>cssClass</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>cssErrorClass</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute. Used when the bound field has
+ * errors.</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>cssStyle</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>dir</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>disabled</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute. Setting the value of this attribute to 'true'
+ * will disable the HTML element.</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>htmlEscape</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Enable/disable HTML escaping of rendered values.</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>id</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>label</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>lang</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onclick</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>ondblclick</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onkeydown</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onkeypress</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onkeyup</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmousedown</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onmousemove</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmouseout</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onmouseover</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmouseup</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>tabindex</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>title</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>value</p></td>
+ * <td><p>true</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * </tbody>
+ * </table>
  *
  * @author Rob Harrop
  * @author Juergen Hoeller
@@ -78,16 +227,16 @@ public class OptionTag extends AbstractHtmlElementBodyTag implements BodyTag {
 	/**
 	 * The 'value' attribute of the rendered HTML {@code <option>} tag.
 	 */
-	private Object value;
+	private @Nullable Object value;
 
 	/**
 	 * The text body of the rendered HTML {@code <option>} tag.
 	 */
-	private String label;
+	private @Nullable String label;
 
-	private Object oldValue;
+	private @Nullable Object oldValue;
 
-	private Object oldDisplayValue;
+	private @Nullable Object oldDisplayValue;
 
 	private boolean disabled;
 
@@ -102,7 +251,7 @@ public class OptionTag extends AbstractHtmlElementBodyTag implements BodyTag {
 	/**
 	 * Get the 'value' attribute of the rendered HTML {@code <option>} tag.
 	 */
-	protected Object getValue() {
+	protected @Nullable Object getValue() {
 		return this.value;
 	}
 
@@ -125,14 +274,13 @@ public class OptionTag extends AbstractHtmlElementBodyTag implements BodyTag {
 	 * <p>May be a runtime expression.
 	 */
 	public void setLabel(String label) {
-		Assert.notNull(label, "'label' must not be null");
 		this.label = label;
 	}
 
 	/**
 	 * Get the text body of the rendered HTML {@code <option>} tag.
 	 */
-	protected String getLabel() {
+	protected @Nullable String getLabel() {
 		return this.label;
 	}
 
@@ -210,13 +358,13 @@ public class OptionTag extends AbstractHtmlElementBodyTag implements BodyTag {
 	}
 
 	@Override
-	protected String autogenerateId() throws JspException {
+	protected @Nullable String autogenerateId() throws JspException {
 		return null;
 	}
 
 	/**
-	 * Returns the value of the label for this '{@code option}' element.
-	 * If the {@link #setLabel label} property is set then the resolved value
+	 * Return the value of the label for this '{@code option}' element.
+	 * <p>If the {@link #setLabel label} property is set then the resolved value
 	 * of that property is used, otherwise the value of the {@code resolvedValue}
 	 * argument is used.
 	 */
@@ -238,7 +386,7 @@ public class OptionTag extends AbstractHtmlElementBodyTag implements BodyTag {
 		return SelectedValueComparator.isSelected(getBindStatus(), resolvedValue);
 	}
 
-	private Object resolveValue() throws JspException {
+	private @Nullable Object resolveValue() throws JspException {
 		return evaluate(VALUE_VARIABLE_NAME, getValue());
 	}
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,115 +18,139 @@ package org.springframework.web.servlet.mvc.condition;
 
 import java.util.Collection;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import org.springframework.mock.web.test.MockHttpServletRequest;
 import org.springframework.web.servlet.mvc.condition.ParamsRequestCondition.ParamExpression;
+import org.springframework.web.testfixture.servlet.MockHttpServletRequest;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
+ * Tests for {@link ParamsRequestCondition}.
+ *
  * @author Arjen Poutsma
+ * @author Stephane Nicoll
  */
-public class ParamsRequestConditionTests {
+class ParamsRequestConditionTests {
 
 	@Test
-	public void paramEquals() {
-		assertEquals(new ParamsRequestCondition("foo"), new ParamsRequestCondition("foo"));
-		assertFalse(new ParamsRequestCondition("foo").equals(new ParamsRequestCondition("bar")));
-		assertFalse(new ParamsRequestCondition("foo").equals(new ParamsRequestCondition("FOO")));
-		assertEquals(new ParamsRequestCondition("foo=bar"), new ParamsRequestCondition("foo=bar"));
-		assertFalse(
-				new ParamsRequestCondition("foo=bar").equals(new ParamsRequestCondition("FOO=bar")));
+	void paramEquals() {
+		assertThat(new ParamsRequestCondition("foo")).isEqualTo(new ParamsRequestCondition("foo"));
+		assertThat(new ParamsRequestCondition("foo")).isNotEqualTo(new ParamsRequestCondition("bar"));
+		assertThat(new ParamsRequestCondition("foo")).isNotEqualTo(new ParamsRequestCondition("FOO"));
+		assertThat(new ParamsRequestCondition("foo=bar")).isEqualTo(new ParamsRequestCondition("foo=bar"));
+		assertThat(new ParamsRequestCondition("foo=bar")).isNotEqualTo(new ParamsRequestCondition("FOO=bar"));
 	}
 
 	@Test
-	public void paramPresent() {
-		ParamsRequestCondition condition = new ParamsRequestCondition("foo");
-
+	void paramPresent() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addParameter("foo", "");
 
-		assertNotNull(condition.getMatchingCondition(request));
+		assertThat(new ParamsRequestCondition("foo").getMatchingCondition(request)).isNotNull();
+	}
+
+	@Test // SPR-15831
+	void paramPresentNullValue() {
+		MockHttpServletRequest request = new MockHttpServletRequest();
+		request.addParameter("foo", (String) null);
+
+		assertThat(new ParamsRequestCondition("foo").getMatchingCondition(request)).isNotNull();
 	}
 
 	@Test
-	public void paramPresentNoMatch() {
-		ParamsRequestCondition condition = new ParamsRequestCondition("foo");
-
+	void paramPresentNoMatch() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addHeader("bar", "");
 
-		assertNull(condition.getMatchingCondition(request));
+		assertThat(new ParamsRequestCondition("foo").getMatchingCondition(request)).isNull();
 	}
 
 	@Test
-	public void paramNotPresent() {
+	void paramNotPresent() {
 		ParamsRequestCondition condition = new ParamsRequestCondition("!foo");
-
 		MockHttpServletRequest request = new MockHttpServletRequest();
 
-		assertNotNull(condition.getMatchingCondition(request));
+		assertThat(condition.getMatchingCondition(request)).isNotNull();
 	}
 
 	@Test
-	public void paramValueMatch() {
-		ParamsRequestCondition condition = new ParamsRequestCondition("foo=bar");
-
+	void paramValueMatch() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addParameter("foo", "bar");
 
-		assertNotNull(condition.getMatchingCondition(request));
+		assertThat(new ParamsRequestCondition("foo=bar").getMatchingCondition(request)).isNotNull();
 	}
 
 	@Test
-	public void paramValueNoMatch() {
-		ParamsRequestCondition condition = new ParamsRequestCondition("foo=bar");
-
+	void paramValueNoMatch() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.addParameter("foo", "bazz");
 
-		assertNull(condition.getMatchingCondition(request));
+		assertThat(new ParamsRequestCondition("foo=bar").getMatchingCondition(request)).isNull();
 	}
 
 	@Test
-	public void compareTo() {
+	void compareTo() {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 
 		ParamsRequestCondition condition1 = new ParamsRequestCondition("foo", "bar", "baz");
-		ParamsRequestCondition condition2 = new ParamsRequestCondition("foo", "bar");
+		ParamsRequestCondition condition2 = new ParamsRequestCondition("foo=a", "bar");
 
 		int result = condition1.compareTo(condition2, request);
-		assertTrue("Invalid comparison result: " + result, result < 0);
+		assertThat(result).as("Invalid comparison result: " + result).isLessThan(0);
 
 		result = condition2.compareTo(condition1, request);
-		assertTrue("Invalid comparison result: " + result, result > 0);
+		assertThat(result).as("Invalid comparison result: " + result).isGreaterThan(0);
+	}
+
+	@Test // SPR-16674
+	void compareToWithMoreSpecificMatchByValue() {
+		MockHttpServletRequest request = new MockHttpServletRequest();
+
+		ParamsRequestCondition condition1 = new ParamsRequestCondition("response_type=code");
+		ParamsRequestCondition condition2 = new ParamsRequestCondition("response_type");
+
+		int result = condition1.compareTo(condition2, request);
+		assertThat(result).as("Invalid comparison result: " + result).isLessThan(0);
 	}
 
 	@Test
-	public void combine() {
+	void compareToWithNegatedMatch() {
+		MockHttpServletRequest request = new MockHttpServletRequest();
+
+		ParamsRequestCondition condition1 = new ParamsRequestCondition("response_type!=code");
+		ParamsRequestCondition condition2 = new ParamsRequestCondition("response_type");
+
+		assertThat(condition1.compareTo(condition2, request)).as("Negated match should not count as more specific").isEqualTo(0);
+	}
+
+	@Test
+	void combineWithOtherEmpty() {
+		ParamsRequestCondition condition1 = new ParamsRequestCondition("foo=bar");
+		ParamsRequestCondition condition2 = new ParamsRequestCondition();
+
+		ParamsRequestCondition result = condition1.combine(condition2);
+		assertThat(result).isEqualTo(condition1);
+	}
+
+	@Test
+	void combineWithThisEmpty() {
+		ParamsRequestCondition condition1 = new ParamsRequestCondition();
+		ParamsRequestCondition condition2 = new ParamsRequestCondition("foo=bar");
+
+		ParamsRequestCondition result = condition1.combine(condition2);
+		assertThat(result).isEqualTo(condition2);
+	}
+
+	@Test
+	void combine() {
 		ParamsRequestCondition condition1 = new ParamsRequestCondition("foo=bar");
 		ParamsRequestCondition condition2 = new ParamsRequestCondition("foo=baz");
 
 		ParamsRequestCondition result = condition1.combine(condition2);
 		Collection<ParamExpression> conditions = result.getContent();
-		assertEquals(2, conditions.size());
-	}
-
-	@Test
-	public void getMatchingCondition() {
-		MockHttpServletRequest request = new MockHttpServletRequest();
-		request.addParameter("foo", "bar");
-
-		ParamsRequestCondition condition = new ParamsRequestCondition("foo");
-
-		ParamsRequestCondition result = condition.getMatchingCondition(request);
-		assertEquals(condition, result);
-
-		condition = new ParamsRequestCondition("bar");
-
-		result = condition.getMatchingCondition(request);
-		assertNull(result);
+		assertThat(conditions).hasSize(2);
 	}
 
 }

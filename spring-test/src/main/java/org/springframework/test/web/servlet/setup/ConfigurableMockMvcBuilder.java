@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,65 +16,77 @@
 
 package org.springframework.test.web.servlet.setup;
 
-import javax.servlet.Filter;
+import java.nio.charset.Charset;
+import java.util.EnumSet;
+import java.util.Map;
 
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterConfig;
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.test.web.servlet.DispatcherServletCustomizer;
 import org.springframework.test.web.servlet.MockMvcBuilder;
 import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.ResultHandler;
 import org.springframework.test.web.servlet.ResultMatcher;
+import org.springframework.web.client.ApiVersionInserter;
 
 /**
  * Defines common methods for building a {@code MockMvc}.
  *
  * @author Rossen Stoyanchev
+ * @author Sam Brannen
  * @since 4.1
+ * @param <B> a self reference to the builder type
  */
 public interface ConfigurableMockMvcBuilder<B extends ConfigurableMockMvcBuilder<B>> extends MockMvcBuilder {
 
 	/**
-	 * Add filters mapped to any request (i.e. "/*"). For example:
-	 *
-	 * <pre class="code">
-	 * mockMvcBuilder.addFilters(springSecurityFilterChain);
-	 * </pre>
-	 *
-	 * <p>is the equivalent of the following web.xml configuration:
-	 *
-	 * <pre class="code">
-	 * &lt;filter-mapping&gt;
-	 *     &lt;filter-name&gt;springSecurityFilterChain&lt;/filter-name&gt;
-	 *     &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
-	 * &lt;/filter-mapping&gt;
-	 * </pre>
-	 *
-	 * <p>Filters will be invoked in the order in which they are provided.
-	 *
+	 * Add filters mapped to all requests. Filters are invoked in the same order.
+	 * <p>Note: if you need the filter to be initialized with {@link Filter#init(FilterConfig)},
+	 * please use {@link #addFilter(Filter, String, Map, EnumSet, String...)} instead.
 	 * @param filters the filters to add
 	 */
 	<T extends B> T addFilters(Filter... filters);
 
 	/**
-	 * Add a filter mapped to a specific set of patterns. For example:
-	 *
-	 * <pre class="code">
-	 * mockMvcBuilder.addFilters(myResourceFilter, "/resources/*");
-	 * </pre>
-	 *
-	 * <p>is the equivalent of:
-	 *
-	 * <pre class="code">
-	 * &lt;filter-mapping&gt;
-	 *     &lt;filter-name&gt;myResourceFilter&lt;/filter-name&gt;
-	 *     &lt;url-pattern&gt;/resources/*&lt;/url-pattern&gt;
-	 * &lt;/filter-mapping&gt;
-	 * </pre>
-	 *
-	 * <p>Filters will be invoked in the order in which they are provided.
-	 *
+	 * Add a filter mapped to specific patterns.
+	 * <p>Note: if you need the filter to be initialized with {@link Filter#init(FilterConfig)},
+	 * please use {@link #addFilter(Filter, String, Map, EnumSet, String...)} instead.
 	 * @param filter the filter to add
-	 * @param urlPatterns URL patterns to map to; if empty, "/*" is used by default
+	 * @param urlPatterns the URL patterns to map to; if empty, matches all requests
 	 */
 	<T extends B> T addFilter(Filter filter, String... urlPatterns);
+
+	/**
+	 * Add a filter that will be initialized via {@link Filter#init(FilterConfig)}
+	 * with the given init parameters, and will also apply only to requests that
+	 * match the given dispatcher types and URL patterns.
+	 * @param filter the filter to add
+	 * @param filterName the name to use for the filter; if {@code null}, then
+	 * {@link org.springframework.mock.web.MockFilterConfig} is created without
+	 * a name, which defaults to an empty String for the name
+	 * @param initParams the init parameters to initialize the filter with
+	 * @param dispatcherTypes dispatcher types the filter applies to
+	 * @param urlPatterns the URL patterns to map to; if empty, matches all requests
+	 * @since 6.1
+	 * @see org.springframework.mock.web.MockFilterConfig
+	 */
+	<T extends B> T addFilter(
+			Filter filter, @Nullable String filterName, Map<String, String> initParams,
+			EnumSet<DispatcherType> dispatcherTypes, String... urlPatterns);
+
+	/**
+	 * Set the {@link ApiVersionInserter} to use to apply to versions specified via
+	 * {@link org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder#apiVersion(Object)}.
+	 * <p>{@code ApiVersionInserter} exposes shortcut methods for several
+	 * built-in inserter implementation types. See the class-level Javadoc
+	 * of {@link ApiVersionInserter} for a list of choices.
+	 * @param versionInserter the inserter to use
+	 * @since 7.0
+	 */
+	<T extends B> T apiVersionInserter(@Nullable ApiVersionInserter versionInserter);
 
 	/**
 	 * Define default request properties that should be merged into all
@@ -84,18 +96,27 @@ public interface ConfigurableMockMvcBuilder<B extends ConfigurableMockMvcBuilder
 	 *
 	 * <p>Properties specified at the time of performing a request override the
 	 * default properties defined here.
-	 *
 	 * @param requestBuilder a RequestBuilder; see static factory methods in
 	 * {@link org.springframework.test.web.servlet.request.MockMvcRequestBuilders}
-	 * .
 	 */
 	<T extends B> T defaultRequest(RequestBuilder requestBuilder);
+
+	/**
+	 * Define the default character encoding to be applied to every response.
+	 * <p>The default implementation of this method throws an
+	 * {@link UnsupportedOperationException}. Concrete implementations are therefore
+	 * encouraged to override this method.
+	 * @param defaultResponseCharacterEncoding the default response character encoding
+	 * @since 5.3.10
+	 */
+	default <T extends B> T defaultResponseCharacterEncoding(Charset defaultResponseCharacterEncoding) {
+		throw new UnsupportedOperationException("defaultResponseCharacterEncoding is not supported by this MockMvcBuilder");
+	}
 
 	/**
 	 * Define a global expectation that should <em>always</em> be applied to
 	 * every response. For example, status code 200 (OK), content type
 	 * {@code "application/json"}, etc.
-	 *
 	 * @param resultMatcher a ResultMatcher; see static factory methods in
 	 * {@link org.springframework.test.web.servlet.result.MockMvcResultMatchers}
 	 */
@@ -105,7 +126,6 @@ public interface ConfigurableMockMvcBuilder<B extends ConfigurableMockMvcBuilder
 	 * Define a global action that should <em>always</em> be applied to every
 	 * response. For example, writing detailed information about the performed
 	 * request and resulting response to {@code System.out}.
-	 *
 	 * @param resultHandler a ResultHandler; see static factory methods in
 	 * {@link org.springframework.test.web.servlet.result.MockMvcResultHandlers}
 	 */
@@ -119,8 +139,21 @@ public interface ConfigurableMockMvcBuilder<B extends ConfigurableMockMvcBuilder
 	<T extends B> T dispatchOptions(boolean dispatchOptions);
 
 	/**
+	 * A more advanced variant of {@link #dispatchOptions(boolean)} that allows
+	 * customizing any {@link org.springframework.web.servlet.DispatcherServlet}
+	 * property.
+	 * @since 5.3
+	 */
+	<T extends B> T addDispatcherServletCustomizer(DispatcherServletCustomizer customizer);
+
+	/**
 	 * Add a {@code MockMvcConfigurer} that automates MockMvc setup and
-	 * configures it for some specific purpose (e.g. security).
+	 * configures it for some specific purpose (for example, security).
+	 * <p>There is a built-in {@link SharedHttpSessionConfigurer} that can be
+	 * used to re-use the HTTP session across requests. 3rd party frameworks
+	 * like Spring Security also use this mechanism to provide configuration
+	 * shortcuts.
+	 * @see SharedHttpSessionConfigurer
 	 */
 	<T extends B> T apply(MockMvcConfigurer configurer);
 

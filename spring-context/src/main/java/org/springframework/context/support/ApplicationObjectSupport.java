@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,21 +18,23 @@ package org.springframework.context.support;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationContextException;
+import org.springframework.util.Assert;
 
 /**
  * Convenient superclass for application objects that want to be aware of
- * the application context, e.g. for custom lookup of collaborating beans
+ * the application context, for example, for custom lookup of collaborating beans
  * or for context-specific resource access. It saves the application
  * context reference and provides an initialization callback method.
  * Furthermore, it offers numerous convenience methods for message lookup.
  *
  * <p>There is no requirement to subclass this class: It just makes things
- * a little easier if you need access to the context, e.g. for access to
+ * a little easier if you need access to the context, for example, for access to
  * file resources or to the message source. Note that many application
  * objects do not need to be aware of the application context at all,
  * as they can receive collaborating beans via bean references.
@@ -46,18 +48,18 @@ import org.springframework.context.ApplicationContextException;
  */
 public abstract class ApplicationObjectSupport implements ApplicationContextAware {
 
-	/** Logger that is available to subclasses */
+	/** Logger that is available to subclasses. */
 	protected final Log logger = LogFactory.getLog(getClass());
 
-	/** ApplicationContext this object runs in */
-	private ApplicationContext applicationContext;
+	/** ApplicationContext this object runs in. */
+	private @Nullable ApplicationContext applicationContext;
 
-	/** MessageSourceAccessor for easy message access */
-	private MessageSourceAccessor messageSourceAccessor;
+	/** MessageSourceAccessor for easy message access. */
+	private @Nullable MessageSourceAccessor messageSourceAccessor;
 
 
 	@Override
-	public final void setApplicationContext(ApplicationContext context) throws BeansException {
+	public final void setApplicationContext(@Nullable ApplicationContext context) throws BeansException {
 		if (context == null && !isContextRequired()) {
 			// Reset internal context state.
 			this.applicationContext = null;
@@ -107,7 +109,7 @@ public abstract class ApplicationObjectSupport implements ApplicationContextAwar
 	/**
 	 * Subclasses can override this for custom initialization behavior.
 	 * Gets called by {@code setApplicationContext} after setting the context instance.
-	 * <p>Note: Does </i>not</i> get called on reinitialization of the context
+	 * <p>Note: Does <i>not</i> get called on re-initialization of the context
 	 * but rather just on first initialization of this object's context reference.
 	 * <p>The default implementation calls the overloaded {@link #initApplicationContext()}
 	 * method without ApplicationContext reference.
@@ -123,7 +125,7 @@ public abstract class ApplicationObjectSupport implements ApplicationContextAwar
 	/**
 	 * Subclasses can override this for custom initialization behavior.
 	 * <p>The default implementation is empty. Called by
-	 * {@link #initApplicationContext(org.springframework.context.ApplicationContext)}.
+	 * {@link #initApplicationContext(ApplicationContext)}.
 	 * @throws ApplicationContextException in case of initialization errors
 	 * @throws BeansException if thrown by ApplicationContext methods
 	 * @see #setApplicationContext
@@ -136,7 +138,7 @@ public abstract class ApplicationObjectSupport implements ApplicationContextAwar
 	 * Return the ApplicationContext that this object is associated with.
 	 * @throws IllegalStateException if not running in an ApplicationContext
 	 */
-	public final ApplicationContext getApplicationContext() throws IllegalStateException {
+	public final @Nullable ApplicationContext getApplicationContext() throws IllegalStateException {
 		if (this.applicationContext == null && isContextRequired()) {
 			throw new IllegalStateException(
 					"ApplicationObjectSupport instance [" + this + "] does not run in an ApplicationContext");
@@ -145,11 +147,23 @@ public abstract class ApplicationObjectSupport implements ApplicationContextAwar
 	}
 
 	/**
+	 * Obtain the ApplicationContext for actual use.
+	 * @return the ApplicationContext (never {@code null})
+	 * @throws IllegalStateException in case of no ApplicationContext set
+	 * @since 5.0
+	 */
+	protected final ApplicationContext obtainApplicationContext() {
+		ApplicationContext applicationContext = getApplicationContext();
+		Assert.state(applicationContext != null, "No ApplicationContext");
+		return applicationContext;
+	}
+
+	/**
 	 * Return a MessageSourceAccessor for the application context
 	 * used by this object, for easy message access.
 	 * @throws IllegalStateException if not running in an ApplicationContext
 	 */
-	protected final MessageSourceAccessor getMessageSourceAccessor() throws IllegalStateException {
+	protected final @Nullable MessageSourceAccessor getMessageSourceAccessor() throws IllegalStateException {
 		if (this.messageSourceAccessor == null && isContextRequired()) {
 			throw new IllegalStateException(
 					"ApplicationObjectSupport instance [" + this + "] does not run in an ApplicationContext");

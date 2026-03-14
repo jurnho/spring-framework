@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,13 +18,15 @@ package org.springframework.web.servlet.resource;
 
 import java.io.IOException;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 
 /**
- * An extension of {@link org.springframework.core.io.ByteArrayResource}
- * that a {@link ResourceTransformer} can use to represent an original
- * resource preserving all other information except the content.
+ * An extension of {@link ByteArrayResource} that a {@link ResourceTransformer}
+ * can use to represent an original resource preserving all other information
+ * except the content.
  *
  * @author Jeremy Grelle
  * @author Rossen Stoyanchev
@@ -32,7 +34,7 @@ import org.springframework.core.io.Resource;
  */
 public class TransformedResource extends ByteArrayResource {
 
-	private final String filename;
+	private final @Nullable String filename;
 
 	private final long lastModified;
 
@@ -51,7 +53,7 @@ public class TransformedResource extends ByteArrayResource {
 
 
 	@Override
-	public String getFilename() {
+	public @Nullable String getFilename() {
 		return this.filename;
 	}
 

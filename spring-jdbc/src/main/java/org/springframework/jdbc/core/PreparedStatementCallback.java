@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,8 @@ package org.springframework.jdbc.core;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.dao.DataAccessException;
 
@@ -37,10 +39,12 @@ import org.springframework.dao.DataAccessException;
  *
  * @author Juergen Hoeller
  * @since 16.03.2004
+ * @param <T> the result type
  * @see JdbcTemplate#execute(String, PreparedStatementCallback)
  * @see JdbcTemplate#execute(PreparedStatementCreator, PreparedStatementCallback)
  */
-public interface PreparedStatementCallback<T> {
+@FunctionalInterface
+public interface PreparedStatementCallback<T extends @Nullable Object> {
 
 	/**
 	 * Gets called by {@code JdbcTemplate.execute} with an active JDBC
@@ -66,10 +70,10 @@ public interface PreparedStatementCallback<T> {
 	 * @param ps active JDBC PreparedStatement
 	 * @return a result object, or {@code null} if none
 	 * @throws SQLException if thrown by a JDBC method, to be auto-converted
-	 * to a DataAccessException by a SQLExceptionTranslator
+	 * to a DataAccessException by an SQLExceptionTranslator
 	 * @throws DataAccessException in case of custom exceptions
-	 * @see JdbcTemplate#queryForObject(String, Object[], Class)
-	 * @see JdbcTemplate#queryForList(String, Object[])
+	 * @see JdbcTemplate#queryForObject(String, Class, Object...)
+	 * @see JdbcTemplate#queryForList(String, Object...)
 	 */
 	T doInPreparedStatement(PreparedStatement ps) throws SQLException, DataAccessException;
 

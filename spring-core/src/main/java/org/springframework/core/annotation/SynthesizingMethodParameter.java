@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,7 +18,9 @@ package org.springframework.core.annotation;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 
 import org.springframework.core.MethodParameter;
 
@@ -53,7 +55,7 @@ public class SynthesizingMethodParameter extends MethodParameter {
 	 * return type; 0 for the first method parameter; 1 for the second method
 	 * parameter, etc.
 	 * @param nestingLevel the nesting level of the target type
-	 * (typically 1; e.g. in case of a List of Lists, 1 would indicate the
+	 * (typically 1; for example, in case of a List of Lists, 1 would indicate the
 	 * nested List, whereas 2 would indicate the element of the nested List)
 	 */
 	public SynthesizingMethodParameter(Method method, int parameterIndex, int nestingLevel) {
@@ -75,7 +77,7 @@ public class SynthesizingMethodParameter extends MethodParameter {
 	 * @param constructor the Constructor to specify a parameter for
 	 * @param parameterIndex the index of the parameter
 	 * @param nestingLevel the nesting level of the target type
-	 * (typically 1; e.g. in case of a List of Lists, 1 would indicate the
+	 * (typically 1; for example, in case of a List of Lists, 1 would indicate the
 	 * nested List, whereas 2 would indicate the element of the nested List)
 	 */
 	public SynthesizingMethodParameter(Constructor<?> constructor, int parameterIndex, int nestingLevel) {
@@ -85,7 +87,7 @@ public class SynthesizingMethodParameter extends MethodParameter {
 	/**
 	 * Copy constructor, resulting in an independent {@code SynthesizingMethodParameter}
 	 * based on the same metadata and cache state that the original object was in.
-	 * @param original the original SynthesizingMethodParameter object to copy from
+	 * @param original the original {@code SynthesizingMethodParameter} object to copy from
 	 */
 	protected SynthesizingMethodParameter(SynthesizingMethodParameter original) {
 		super(original);
@@ -102,10 +104,46 @@ public class SynthesizingMethodParameter extends MethodParameter {
 		return AnnotationUtils.synthesizeAnnotationArray(annotations, getAnnotatedElement());
 	}
 
-
 	@Override
 	public SynthesizingMethodParameter clone() {
 		return new SynthesizingMethodParameter(this);
+	}
+
+
+	/**
+	 * Create a new {@code SynthesizingMethodParameter} for the given method or
+	 * constructor.
+	 * <p>This is a convenience factory method for scenarios where a {@link Method}
+	 * or {@link Constructor} reference is treated in a generic fashion.
+	 * @param executable the {@code Method} or {@code Constructor} to specify a
+	 * parameter for
+	 * @param parameterIndex the index of the parameter
+	 * @return the corresponding {@code SynthesizingMethodParameter} instance
+	 * @since 5.0
+	 */
+	public static SynthesizingMethodParameter forExecutable(Executable executable, int parameterIndex) {
+		if (executable instanceof Method method) {
+			return new SynthesizingMethodParameter(method, parameterIndex);
+		}
+		else if (executable instanceof Constructor<?> constructor) {
+			return new SynthesizingMethodParameter(constructor, parameterIndex);
+		}
+		else {
+			throw new IllegalArgumentException("Not a Method/Constructor: " + executable);
+		}
+	}
+
+	/**
+	 * Create a new {@code SynthesizingMethodParameter} for the given parameter
+	 * descriptor.
+	 * <p>This is a convenience factory method for scenarios where a Java
+	 * {@link Parameter} descriptor is already available.
+	 * @param parameter the parameter descriptor
+	 * @return the corresponding {@code SynthesizingMethodParameter} instance
+	 * @since 5.0
+	 */
+	public static SynthesizingMethodParameter forParameter(Parameter parameter) {
+		return forExecutable(parameter.getDeclaringExecutable(), findParameterIndex(parameter));
 	}
 
 }

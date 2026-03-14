@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2011 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.web.servlet.mvc.method.annotation;
 
 import java.util.List;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.web.bind.ServletRequestDataBinder;
 import org.springframework.web.bind.support.WebBindingInitializer;
@@ -37,16 +39,20 @@ public class ServletRequestDataBinderFactory extends InitBinderDataBinderFactory
 	 * @param binderMethods one or more {@code @InitBinder} methods
 	 * @param initializer provides global data binder initialization
 	 */
-	public ServletRequestDataBinderFactory(List<InvocableHandlerMethod> binderMethods, WebBindingInitializer initializer) {
+	public ServletRequestDataBinderFactory(@Nullable List<InvocableHandlerMethod> binderMethods,
+			@Nullable WebBindingInitializer initializer) {
+
 		super(binderMethods, initializer);
 	}
 
 	/**
-	 * Returns an instance of {@link ExtendedServletRequestDataBinder}.
+	 * Returns an instance of {@link org.springframework.web.servlet.support.ExtendedServletRequestDataBinder}.
 	 */
 	@Override
-	protected ServletRequestDataBinder createBinderInstance(Object target, String objectName, NativeWebRequest request) {
-		return new ExtendedServletRequestDataBinder(target, objectName);
+	protected ServletRequestDataBinder createBinderInstance(
+			@Nullable Object target, String objectName, NativeWebRequest request) throws Exception {
+
+		return new org.springframework.web.servlet.support.ExtendedServletRequestDataBinder(target, objectName);
 	}
 
 }

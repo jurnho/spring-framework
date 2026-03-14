@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2010 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,8 @@
 
 package org.springframework.context.support;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.ClassPathResource;
@@ -25,7 +27,7 @@ import org.springframework.util.Assert;
 /**
  * Standalone XML application context, taking the context definition files
  * from the class path, interpreting plain paths as class path resource names
- * that include the package path (e.g. "mypackage/myresource.txt"). Useful for
+ * that include the package path (for example, "mypackage/myresource.txt"). Useful for
  * test harnesses as well as for application contexts embedded within JARs.
  *
  * <p>The config location defaults can be overridden via {@link #getConfigLocations},
@@ -50,7 +52,7 @@ import org.springframework.util.Assert;
  */
 public class ClassPathXmlApplicationContext extends AbstractXmlApplicationContext {
 
-	private Resource[] configResources;
+	private Resource @Nullable [] configResources;
 
 
 	/**
@@ -101,7 +103,9 @@ public class ClassPathXmlApplicationContext extends AbstractXmlApplicationContex
 	 * @param parent the parent context
 	 * @throws BeansException if context creation failed
 	 */
-	public ClassPathXmlApplicationContext(String[] configLocations, ApplicationContext parent) throws BeansException {
+	public ClassPathXmlApplicationContext(String[] configLocations, @Nullable ApplicationContext parent)
+			throws BeansException {
+
 		this(configLocations, true, parent);
 	}
 
@@ -130,7 +134,8 @@ public class ClassPathXmlApplicationContext extends AbstractXmlApplicationContex
 	 * @throws BeansException if context creation failed
 	 * @see #refresh()
 	 */
-	public ClassPathXmlApplicationContext(String[] configLocations, boolean refresh, ApplicationContext parent)
+	public ClassPathXmlApplicationContext(
+			String[] configLocations, boolean refresh, @Nullable ApplicationContext parent)
 			throws BeansException {
 
 		super(parent);
@@ -184,7 +189,7 @@ public class ClassPathXmlApplicationContext extends AbstractXmlApplicationContex
 	 * @see org.springframework.context.support.GenericApplicationContext
 	 * @see org.springframework.beans.factory.xml.XmlBeanDefinitionReader
 	 */
-	public ClassPathXmlApplicationContext(String[] paths, Class<?> clazz, ApplicationContext parent)
+	public ClassPathXmlApplicationContext(String[] paths, Class<?> clazz, @Nullable ApplicationContext parent)
 			throws BeansException {
 
 		super(parent);
@@ -199,7 +204,7 @@ public class ClassPathXmlApplicationContext extends AbstractXmlApplicationContex
 
 
 	@Override
-	protected Resource[] getConfigResources() {
+	protected Resource @Nullable [] getConfigResources() {
 		return this.configResources;
 	}
 

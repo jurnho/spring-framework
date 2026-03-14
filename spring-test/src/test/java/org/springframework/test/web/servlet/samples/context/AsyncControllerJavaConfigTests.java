@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,10 +20,9 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +31,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.ContextHierarchy;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.context.aot.DisabledInAotMode;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -43,9 +43,10 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.context.request.async.CallableProcessingInterceptor;
 import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -58,9 +59,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @author Rossen Stoyanchev
  * @author Sam Brannen
  */
-@RunWith(SpringJUnit4ClassRunner.class)
+@ExtendWith(SpringExtension.class)
 @WebAppConfiguration
 @ContextHierarchy(@ContextConfiguration(classes = AsyncControllerJavaConfigTests.WebConfig.class))
+@DisabledInAotMode("@ContextHierarchy is not supported in AOT")
 public class AsyncControllerJavaConfigTests {
 
 	@Autowired
@@ -72,7 +74,7 @@ public class AsyncControllerJavaConfigTests {
 	private MockMvc mockMvc;
 
 
-	@Before
+	@BeforeEach
 	public void setup() {
 		this.mockMvc = MockMvcBuilders.webAppContextSetup(this.wac).build();
 	}
@@ -103,7 +105,7 @@ public class AsyncControllerJavaConfigTests {
 
 	@Configuration
 	@EnableWebMvc
-	static class WebConfig extends WebMvcConfigurerAdapter {
+	static class WebConfig implements WebMvcConfigurer {
 
 		@Override
 		public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
@@ -112,7 +114,7 @@ public class AsyncControllerJavaConfigTests {
 
 		@Bean
 		public CallableProcessingInterceptor callableInterceptor() {
-			return Mockito.mock(CallableProcessingInterceptor.class);
+			return mock();
 		}
 
 		@Bean

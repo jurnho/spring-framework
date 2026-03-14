@@ -1,5 +1,8 @@
 /**
  * Core package of the client-side web support.
- * Provides a RestTemplate class and various callback interfaces.
+ * Provides the RestTemplate and RestClient.
  */
+@NullMarked
 package org.springframework.web.client;
+
+import org.jspecify.annotations.NullMarked;

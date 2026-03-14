@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,8 @@ package org.springframework.messaging.core;
 
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessagingException;
 
@@ -28,6 +30,7 @@ import org.springframework.messaging.MessagingException;
  * @author Mark Fisher
  * @author Rossen Stoyanchev
  * @since 4.0
+ * @param <D> the destination type
  * @see DestinationResolver
  */
 public interface DestinationResolvingMessageSendingOperations<D> extends MessageSendingOperations<D> {
@@ -57,36 +60,36 @@ public interface DestinationResolvingMessageSendingOperations<D> extends Message
 	 * destination.
 	 * @param destinationName the destination name to resolve
 	 * @param payload the Object to use as payload
- 	 * @param headers headers for the message to send
+ 	 * @param headers the headers for the message to send
 	 */
-	<T> void convertAndSend(String destinationName, T payload, Map<String, Object> headers)
+	<T> void convertAndSend(String destinationName, T payload, @Nullable Map<String, Object> headers)
 			throws MessagingException;
 
 	/**
 	 * Resolve the given destination name to a destination, convert the payload
 	 * Object to serialized form, possibly using a
 	 * {@link org.springframework.messaging.converter.MessageConverter},
-	 * wrap it as a message, apply the given post processor, and send the resulting
+	 * wrap it as a message, apply the given post-processor, and send the resulting
 	 * message to the resolved destination.
 	 * @param destinationName the destination name to resolve
 	 * @param payload the Object to use as payload
-	 * @param postProcessor the post processor to apply to the message
+	 * @param postProcessor the post-processor to apply to the message
 	 */
-	<T> void convertAndSend(String destinationName, T payload, MessagePostProcessor postProcessor)
+	<T> void convertAndSend(String destinationName, T payload, @Nullable MessagePostProcessor postProcessor)
 			throws MessagingException;
 
 	/**
 	 * Resolve the given destination name to a destination, convert the payload
 	 * Object to serialized form, possibly using a
 	 * {@link org.springframework.messaging.converter.MessageConverter},
-	 * wrap it as a message with the given headers, apply the given post processor,
+	 * wrap it as a message with the given headers, apply the given post-processor,
 	 * and send the resulting message to the resolved destination.
 	 * @param destinationName the destination name to resolve
 	 * @param payload the Object to use as payload
-	 * @param headers headers for the message to send
-	 * @param postProcessor the post processor to apply to the message
+	 * @param headers the headers for the message to send
+	 * @param postProcessor the post-processor to apply to the message
 	 */
-	<T> void convertAndSend(String destinationName, T payload, Map<String, Object> headers,
-			MessagePostProcessor postProcessor) throws MessagingException;
+	<T> void convertAndSend(String destinationName, T payload, @Nullable Map<String, Object> headers,
+			@Nullable MessagePostProcessor postProcessor) throws MessagingException;
 
 }

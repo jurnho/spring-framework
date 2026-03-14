@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,7 @@
 
 package org.springframework.context.annotation.configuration;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
@@ -27,8 +27,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.stereotype.Component;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests ensuring that configuration class bean names as expressed via @Configuration
@@ -38,59 +37,63 @@ import static org.junit.Assert.*;
  * @author Chris Beams
  * @since 3.1.1
  */
-public class ConfigurationBeanNameTests {
+class ConfigurationBeanNameTests {
 
 	@Test
-	public void registerOuterConfig() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
-		ctx.register(A.class);
-		ctx.refresh();
-		assertThat(ctx.containsBean("outer"), is(true));
-		assertThat(ctx.containsBean("imported"), is(true));
-		assertThat(ctx.containsBean("nested"), is(true));
-		assertThat(ctx.containsBean("nestedBean"), is(true));
+	void registerOuterConfig() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(A.class);
+		assertThat(ctx.containsBean("outer")).isTrue();
+		assertThat(ctx.containsBean("imported")).isTrue();
+		assertThat(ctx.containsBean("nested")).isTrue();
+		assertThat(ctx.containsBean("nestedBean")).isTrue();
+		ctx.close();
 	}
 
 	@Test
-	public void registerNestedConfig() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
-		ctx.register(A.B.class);
-		ctx.refresh();
-		assertThat(ctx.containsBean("outer"), is(false));
-		assertThat(ctx.containsBean("imported"), is(false));
-		assertThat(ctx.containsBean("nested"), is(true));
-		assertThat(ctx.containsBean("nestedBean"), is(true));
+	void registerNestedConfig() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(A.B.class);
+		assertThat(ctx.containsBean("outer")).isFalse();
+		assertThat(ctx.containsBean("imported")).isFalse();
+		assertThat(ctx.containsBean("nested")).isTrue();
+		assertThat(ctx.containsBean("nestedBean")).isTrue();
+		ctx.close();
 	}
 
 	@Test
-	public void registerOuterConfig_withBeanNameGenerator() {
+	void registerOuterConfig_withBeanNameGenerator() {
 		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
 		ctx.setBeanNameGenerator(new AnnotationBeanNameGenerator() {
 			@Override
-			public String generateBeanName(
-					BeanDefinition definition, BeanDefinitionRegistry registry) {
+			public String generateBeanName(BeanDefinition definition, BeanDefinitionRegistry registry) {
 				return "custom-" + super.generateBeanName(definition, registry);
 			}
 		});
 		ctx.register(A.class);
 		ctx.refresh();
-		assertThat(ctx.containsBean("custom-outer"), is(true));
-		assertThat(ctx.containsBean("custom-imported"), is(true));
-		assertThat(ctx.containsBean("custom-nested"), is(true));
-		assertThat(ctx.containsBean("nestedBean"), is(true));
+		assertThat(ctx.containsBean("custom-outer")).isTrue();
+		assertThat(ctx.containsBean("custom-imported")).isTrue();
+		assertThat(ctx.containsBean("custom-nested")).isTrue();
+		assertThat(ctx.containsBean("nestedBean")).isTrue();
+		ctx.close();
 	}
+
 
 	@Configuration("outer")
 	@Import(C.class)
 	static class A {
+
 		@Component("nested")
 		static class B {
+
 			@Bean public String nestedBean() { return ""; }
 		}
 	}
 
+
 	@Configuration("imported")
 	static class C {
+
 		@Bean public String s() { return "s"; }
 	}
+
 }

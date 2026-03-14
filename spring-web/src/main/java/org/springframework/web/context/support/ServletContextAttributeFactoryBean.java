@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,8 @@
 
 package org.springframework.web.context.support;
 
-import javax.servlet.ServletContext;
+import jakarta.servlet.ServletContext;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.web.context.ServletContextAware;
@@ -32,9 +33,9 @@ import org.springframework.web.context.ServletContextAware;
  * In a purely Spring-based web application, no such linking in of
  * ServletContext attributes will be necessary.
  *
- * <p><b>NOTE:</b> As of Spring 3.0, you may also use the "contextAttributes" default
- * bean which is of type Map, and dereference it using an "#{contextAttributes.myKey}"
- * expression to access a specific attribute by name.
+ * <p><b>NOTE:</b> You may also use the "contextAttributes" default bean, which is
+ * of type Map, and dereference it using a "#{contextAttributes.myKey}" expression
+ * to access a specific attribute by name.
  *
  * @author Juergen Hoeller
  * @since 1.1.4
@@ -43,9 +44,9 @@ import org.springframework.web.context.ServletContextAware;
  */
 public class ServletContextAttributeFactoryBean implements FactoryBean<Object>, ServletContextAware {
 
-	private String attributeName;
+	private @Nullable String attributeName;
 
-	private Object attribute;
+	private @Nullable Object attribute;
 
 
 	/**
@@ -68,12 +69,12 @@ public class ServletContextAttributeFactoryBean implements FactoryBean<Object>, 
 
 
 	@Override
-	public Object getObject() throws Exception {
+	public @Nullable Object getObject() throws Exception {
 		return this.attribute;
 	}
 
 	@Override
-	public Class<?> getObjectType() {
+	public @Nullable Class<?> getObjectType() {
 		return (this.attribute != null ? this.attribute.getClass() : null);
 	}
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,10 +16,12 @@
 
 package org.springframework.web.socket.sockjs.frame;
 
+import java.util.Locale;
+
 import org.springframework.util.Assert;
 
 /**
- * An base class for SockJS message codec that provides an implementation of
+ * A base class for SockJS message codec that provides an implementation of
  * {@link #encode(String[])}.
  *
  * @author Rossen Stoyanchev
@@ -37,16 +39,16 @@ public abstract class AbstractSockJsMessageCodec implements SockJsMessageCodec {
 			char[] quotedChars = applyJsonQuoting(messages[i]);
 			sb.append(escapeSockJsSpecialChars(quotedChars));
 			sb.append('"');
-            if (i < messages.length - 1) {
-                sb.append(',');
-            }
+			if (i < messages.length - 1) {
+				sb.append(',');
+			}
 		}
 		sb.append(']');
 		return sb.toString();
 	}
 
 	/**
-	 * Apply standard JSON string quoting (see http://www.json.org/).
+	 * Apply standard JSON string quoting (see <a href="https://www.json.org/">json.org</a>).
 	 */
 	protected abstract char[] applyJsonQuoting(String content);
 
@@ -58,10 +60,8 @@ public abstract class AbstractSockJsMessageCodec implements SockJsMessageCodec {
 		for (char c : characters) {
 			if (isSockJsSpecialChar(c)) {
 				result.append('\\').append('u');
-				String hex = Integer.toHexString(c).toLowerCase();
-				for (int i = 0; i < (4 - hex.length()); i++) {
-					result.append('0');
-				}
+				String hex = Integer.toHexString(c).toLowerCase(Locale.ROOT);
+				result.append("0".repeat(Math.max(0, (4 - hex.length()))));
 				result.append(hex);
 			}
 			else {
@@ -75,9 +75,9 @@ public abstract class AbstractSockJsMessageCodec implements SockJsMessageCodec {
 	 * See `escapable_by_server` variable in the SockJS protocol test suite.
 	 */
 	private boolean isSockJsSpecialChar(char ch) {
-		return (ch >= '\u0000' && ch <= '\u001F') || (ch >= '\u200C' && ch <= '\u200F') ||
+		return (ch <= '\u001F') || (ch >= '\u200C' && ch <= '\u200F') ||
 				(ch >= '\u2028' && ch <= '\u202F') || (ch >= '\u2060' && ch <= '\u206F') ||
-				(ch >= '\uFFF0' && ch <= '\uFFFF') || (ch >= '\uD800' && ch <= '\uDFFF');
+				(ch >= '\uFFF0') || (ch >= '\uD800' && ch <= '\uDFFF');
 	}
 
 }

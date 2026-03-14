@@ -4,4 +4,7 @@
  * and {@link org.springframework.cache.Cache Cache} implementation for
  * use in a Spring context, using a JDK based thread pool at runtime.
  */
+@NullMarked
 package org.springframework.cache.concurrent;
+
+import org.jspecify.annotations.NullMarked;

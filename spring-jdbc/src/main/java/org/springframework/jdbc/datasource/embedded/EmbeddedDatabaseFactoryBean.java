@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.jdbc.datasource.embedded;
 
 import javax.sql.DataSource;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
@@ -33,7 +35,7 @@ import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
  * proxy since the {@link FactoryBean} will manage the initialization and destruction
  * lifecycle of the embedded database instance.
  *
- * <p>Implements {@link DisposableBean} to shutdown the embedded database when the
+ * <p>Implements {@link DisposableBean} to shut down the embedded database when the
  * managing Spring container is being closed.
  *
  * @author Keith Donald
@@ -43,7 +45,7 @@ import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 public class EmbeddedDatabaseFactoryBean extends EmbeddedDatabaseFactory
 		implements FactoryBean<DataSource>, InitializingBean, DisposableBean {
 
-	private DatabasePopulator databaseCleaner;
+	private @Nullable DatabasePopulator databaseCleaner;
 
 
 	/**
@@ -64,7 +66,7 @@ public class EmbeddedDatabaseFactoryBean extends EmbeddedDatabaseFactory
 
 
 	@Override
-	public DataSource getObject() {
+	public @Nullable DataSource getObject() {
 		return getDataSource();
 	}
 
@@ -81,8 +83,9 @@ public class EmbeddedDatabaseFactoryBean extends EmbeddedDatabaseFactory
 
 	@Override
 	public void destroy() {
-		if (this.databaseCleaner != null) {
-			DatabasePopulatorUtils.execute(this.databaseCleaner, getDataSource());
+		DatabasePopulator cleaner = this.databaseCleaner;
+		if (cleaner != null && getDataSource() != null) {
+			DatabasePopulatorUtils.execute(cleaner, getDataSource());
 		}
 		shutdownDatabase();
 	}

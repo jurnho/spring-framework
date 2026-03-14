@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +21,7 @@ import java.util.Date;
 import java.util.Map;
 import java.util.TimeZone;
 
+import org.jspecify.annotations.Nullable;
 import org.quartz.CronTrigger;
 import org.quartz.JobDataMap;
 import org.quartz.JobDetail;
@@ -30,7 +31,6 @@ import org.quartz.impl.triggers.CronTriggerImpl;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.core.Constants;
 import org.springframework.util.Assert;
 
 /**
@@ -47,6 +47,7 @@ import org.springframework.util.Assert;
  * instead of registering the JobDetail separately.
  *
  * @author Juergen Hoeller
+ * @author Sam Brannen
  * @since 3.1
  * @see #setName
  * @see #setGroup
@@ -57,37 +58,45 @@ import org.springframework.util.Assert;
  */
 public class CronTriggerFactoryBean implements FactoryBean<CronTrigger>, BeanNameAware, InitializingBean {
 
-	/** Constants for the CronTrigger class */
-	private static final Constants constants = new Constants(CronTrigger.class);
+	/**
+	 * Map of constant names to constant values for the misfire instruction constants
+	 * defined in {@link org.quartz.Trigger} and {@link org.quartz.CronTrigger}.
+	 */
+	private static final Map<String, Integer> constants = Map.of(
+			"MISFIRE_INSTRUCTION_SMART_POLICY", CronTrigger.MISFIRE_INSTRUCTION_SMART_POLICY,
+			"MISFIRE_INSTRUCTION_IGNORE_MISFIRE_POLICY", CronTrigger.MISFIRE_INSTRUCTION_IGNORE_MISFIRE_POLICY,
+			"MISFIRE_INSTRUCTION_FIRE_ONCE_NOW", CronTrigger.MISFIRE_INSTRUCTION_FIRE_ONCE_NOW,
+			"MISFIRE_INSTRUCTION_DO_NOTHING", CronTrigger.MISFIRE_INSTRUCTION_DO_NOTHING
+		);
 
 
-	private String name;
+	private @Nullable String name;
 
-	private String group;
+	private @Nullable String group;
 
-	private JobDetail jobDetail;
+	private @Nullable JobDetail jobDetail;
 
 	private JobDataMap jobDataMap = new JobDataMap();
 
-	private Date startTime;
+	private @Nullable Date startTime;
 
 	private long startDelay = 0;
 
-	private String cronExpression;
+	private @Nullable String cronExpression;
 
-	private TimeZone timeZone;
+	private @Nullable TimeZone timeZone;
 
-	private String calendarName;
+	private @Nullable String calendarName;
 
 	private int priority;
 
-	private int misfireInstruction;
+	private int misfireInstruction = CronTrigger.MISFIRE_INSTRUCTION_SMART_POLICY;
 
-	private String description;
+	private @Nullable String description;
 
-	private String beanName;
+	private @Nullable String beanName;
 
-	private CronTrigger cronTrigger;
+	private @Nullable CronTrigger cronTrigger;
 
 
 	/**
@@ -130,7 +139,7 @@ public class CronTriggerFactoryBean implements FactoryBean<CronTrigger>, BeanNam
 	 * Register objects in the JobDataMap via a given Map.
 	 * <p>These objects will be available to this Trigger only,
 	 * in contrast to objects in the JobDetail's data map.
-	 * @param jobDataAsMap Map with String keys and any objects as values
+	 * @param jobDataAsMap a Map with String keys and any objects as values
 	 * (for example Spring-managed beans)
 	 */
 	public void setJobDataAsMap(Map<String, ?> jobDataAsMap) {
@@ -185,22 +194,29 @@ public class CronTriggerFactoryBean implements FactoryBean<CronTrigger>, BeanNam
 	}
 
 	/**
-	 * Specify a misfire instruction for this trigger.
+	 * Specify the misfire instruction for this trigger.
 	 */
 	public void setMisfireInstruction(int misfireInstruction) {
+		Assert.isTrue(constants.containsValue(misfireInstruction),
+				"Only values of misfire instruction constants allowed");
 		this.misfireInstruction = misfireInstruction;
 	}
 
 	/**
-	 * Set the misfire instruction via the name of the corresponding
-	 * constant in the {@link org.quartz.CronTrigger} class.
-	 * Default is {@code MISFIRE_INSTRUCTION_SMART_POLICY}.
+	 * Set the misfire instruction for this trigger via the name of the corresponding
+	 * constant in the {@link org.quartz.Trigger} and {@link org.quartz.CronTrigger}
+	 * classes.
+	 * <p>Default is {@code MISFIRE_INSTRUCTION_SMART_POLICY}.
+	 * @see org.quartz.Trigger#MISFIRE_INSTRUCTION_SMART_POLICY
+	 * @see org.quartz.Trigger#MISFIRE_INSTRUCTION_IGNORE_MISFIRE_POLICY
 	 * @see org.quartz.CronTrigger#MISFIRE_INSTRUCTION_FIRE_ONCE_NOW
 	 * @see org.quartz.CronTrigger#MISFIRE_INSTRUCTION_DO_NOTHING
-	 * @see org.quartz.Trigger#MISFIRE_INSTRUCTION_SMART_POLICY
 	 */
 	public void setMisfireInstructionName(String constantName) {
-		this.misfireInstruction = constants.asNumber(constantName).intValue();
+		Assert.hasText(constantName, "'constantName' must not be null or blank");
+		Integer misfireInstruction = constants.get(constantName);
+		Assert.notNull(misfireInstruction, "Only misfire instruction constants allowed");
+		this.misfireInstruction = misfireInstruction;
 	}
 
 	/**
@@ -218,6 +234,8 @@ public class CronTriggerFactoryBean implements FactoryBean<CronTrigger>, BeanNam
 
 	@Override
 	public void afterPropertiesSet() throws ParseException {
+		Assert.notNull(this.cronExpression, "Property 'cronExpression' is required");
+
 		if (this.name == null) {
 			this.name = this.beanName;
 		}
@@ -235,7 +253,7 @@ public class CronTriggerFactoryBean implements FactoryBean<CronTrigger>, BeanNam
 		}
 
 		CronTriggerImpl cti = new CronTriggerImpl();
-		cti.setName(this.name);
+		cti.setName(this.name != null ? this.name : toString());
 		cti.setGroup(this.group);
 		if (this.jobDetail != null) {
 			cti.setJobKey(this.jobDetail.getKey());
@@ -253,7 +271,7 @@ public class CronTriggerFactoryBean implements FactoryBean<CronTrigger>, BeanNam
 
 
 	@Override
-	public CronTrigger getObject() {
+	public @Nullable CronTrigger getObject() {
 		return this.cronTrigger;
 	}
 

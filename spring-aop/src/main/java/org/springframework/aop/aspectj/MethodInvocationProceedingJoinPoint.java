@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,24 +25,22 @@ import org.aspectj.lang.Signature;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.aspectj.lang.reflect.SourceLocation;
 import org.aspectj.runtime.internal.AroundClosure;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.ProxyMethodInvocation;
 import org.springframework.core.DefaultParameterNameDiscoverer;
-import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.util.Assert;
 
 /**
- * Implementation of AspectJ ProceedingJoinPoint interface
- * wrapping an AOP Alliance MethodInvocation.
+ * An implementation of the AspectJ {@link ProceedingJoinPoint} interface
+ * wrapping an AOP Alliance {@link org.aopalliance.intercept.MethodInvocation}.
  *
- * <p><b>Note</b>: the {@code getThis()} method returns the current Spring AOP proxy.
+ * <p><b>Note</b>: The {@code getThis()} method returns the current Spring AOP proxy.
  * The {@code getTarget()} method returns the current Spring AOP target (which may be
- * {@code null} if there is no target), and is a plain POJO without any advice.
- * <b>If you want to call the object and have the advice take effect, use
- * {@code getThis()}.</b> A common example is casting the object to an
- * introduced interface in the implementation of an introduction.
- *
- * <p>Of course there is no such distinction between target and proxy in AspectJ.
+ * {@code null} if there is no target instance) as a plain POJO without any advice.
+ * <b>If you want to call the object and have the advice take effect, use {@code getThis()}.</b>
+ * A common example is casting the object to an introduced interface in the implementation of
+ * an introduction. There is no such distinction between target and proxy in AspectJ itself.
  *
  * @author Rod Johnson
  * @author Juergen Hoeller
@@ -52,17 +50,15 @@ import org.springframework.util.Assert;
  */
 public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint, JoinPoint.StaticPart {
 
-	private static final ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
-
 	private final ProxyMethodInvocation methodInvocation;
 
-	private Object[] defensiveCopyOfArgs;
+	private @Nullable Object @Nullable [] args;
 
-	/** Lazily initialized signature object */
-	private Signature signature;
+	/** Lazily initialized signature object. */
+	private @Nullable Signature signature;
 
-	/** Lazily initialized source location object */
-	private SourceLocation sourceLocation;
+	/** Lazily initialized source location object. */
+	private @Nullable SourceLocation sourceLocation;
 
 
 	/**
@@ -75,18 +71,19 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 		this.methodInvocation = methodInvocation;
 	}
 
+
 	@Override
 	public void set$AroundClosure(AroundClosure aroundClosure) {
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
-	public Object proceed() throws Throwable {
+	public @Nullable Object proceed() throws Throwable {
 		return this.methodInvocation.invocableClone().proceed();
 	}
 
 	@Override
-	public Object proceed(Object[] arguments) throws Throwable {
+	public @Nullable Object proceed(Object[] arguments) throws Throwable {
 		Assert.notNull(arguments, "Argument array passed to proceed cannot be null");
 		if (arguments.length != this.methodInvocation.getArguments().length) {
 			throw new IllegalArgumentException("Expecting " +
@@ -109,18 +106,17 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 	 * Returns the Spring AOP target. May be {@code null} if there is no target.
 	 */
 	@Override
-	public Object getTarget() {
+	public @Nullable Object getTarget() {
 		return this.methodInvocation.getThis();
 	}
 
 	@Override
-	public Object[] getArgs() {
-		if (this.defensiveCopyOfArgs == null) {
-			Object[] argsSource = this.methodInvocation.getArguments();
-			this.defensiveCopyOfArgs = new Object[argsSource.length];
-			System.arraycopy(argsSource, 0, this.defensiveCopyOfArgs, 0, argsSource.length);
+	@SuppressWarnings("NullAway") // Overridden method does not define nullness
+	public @Nullable Object[] getArgs() {
+		if (this.args == null) {
+			this.args = this.methodInvocation.getArguments().clone();
 		}
-		return this.defensiveCopyOfArgs;
+		return this.args;
 	}
 
 	@Override
@@ -128,7 +124,7 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 		if (this.signature == null) {
 			this.signature = new MethodSignatureImpl();
 		}
-		return signature;
+		return this.signature;
 	}
 
 	@Override
@@ -176,7 +172,7 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 	 */
 	private class MethodSignatureImpl implements MethodSignature {
 
-		private volatile String[] parameterNames;
+		private volatile @Nullable String @Nullable [] parameterNames;
 
 		@Override
 		public String getName() {
@@ -214,11 +210,14 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 		}
 
 		@Override
-		public String[] getParameterNames() {
-			if (this.parameterNames == null) {
-				this.parameterNames = parameterNameDiscoverer.getParameterNames(getMethod());
+		@SuppressWarnings("NullAway") // Overridden method does not define nullness
+		public @Nullable String @Nullable [] getParameterNames() {
+			@Nullable String[] parameterNames = this.parameterNames;
+			if (parameterNames == null) {
+				parameterNames = DefaultParameterNameDiscoverer.getSharedInstance().getParameterNames(getMethod());
+				this.parameterNames = parameterNames;
 			}
-			return this.parameterNames;
+			return parameterNames;
 		}
 
 		@Override
@@ -247,19 +246,19 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 			StringBuilder sb = new StringBuilder();
 			if (includeModifier) {
 				sb.append(Modifier.toString(getModifiers()));
-				sb.append(" ");
+				sb.append(' ');
 			}
 			if (includeReturnTypeAndArgs) {
 				appendType(sb, getReturnType(), useLongReturnAndArgumentTypeName);
-				sb.append(" ");
+				sb.append(' ');
 			}
 			appendType(sb, getDeclaringType(), useLongTypeName);
-			sb.append(".");
+			sb.append('.');
 			sb.append(getMethod().getName());
-			sb.append("(");
+			sb.append('(');
 			Class<?>[] parametersTypes = getParameterTypes();
 			appendTypes(sb, parametersTypes, includeReturnTypeAndArgs, useLongReturnAndArgumentTypeName);
-			sb.append(")");
+			sb.append(')');
 			return sb.toString();
 		}
 
@@ -270,7 +269,7 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 				for (int size = types.length, i = 0; i < size; i++) {
 					appendType(sb, types[i], useLongReturnAndArgumentTypeName);
 					if (i < size - 1) {
-						sb.append(",");
+						sb.append(',');
 					}
 				}
 			}
@@ -283,7 +282,7 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 
 		private void appendType(StringBuilder sb, Class<?> type, boolean useLongTypeName) {
 			if (type.isArray()) {
-				appendType(sb, type.getComponentType(), useLongTypeName);
+				appendType(sb, type.componentType(), useLongTypeName);
 				sb.append("[]");
 			}
 			else {
@@ -317,7 +316,7 @@ public class MethodInvocationProceedingJoinPoint implements ProceedingJoinPoint,
 		}
 
 		@Override
-		@Deprecated
+		@Deprecated(since = "4.0") // deprecated by AspectJ
 		public int getColumn() {
 			throw new UnsupportedOperationException();
 		}

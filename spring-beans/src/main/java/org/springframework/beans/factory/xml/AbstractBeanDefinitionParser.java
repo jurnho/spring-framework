@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,7 @@
 
 package org.springframework.beans.factory.xml;
 
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Element;
 
 import org.springframework.beans.factory.BeanDefinitionStoreException;
@@ -49,23 +50,24 @@ import org.springframework.util.StringUtils;
  */
 public abstract class AbstractBeanDefinitionParser implements BeanDefinitionParser {
 
-	/** Constant for the "id" attribute */
+	/** Constant for the "id" attribute. */
 	public static final String ID_ATTRIBUTE = "id";
 
-	/** Constant for the "name" attribute */
+	/** Constant for the "name" attribute. */
 	public static final String NAME_ATTRIBUTE = "name";
 
 
 	@Override
-	public final BeanDefinition parse(Element element, ParserContext parserContext) {
+	@SuppressWarnings("NullAway") // Dataflow analysis limitation
+	public final @Nullable BeanDefinition parse(Element element, ParserContext parserContext) {
 		AbstractBeanDefinition definition = parseInternal(element, parserContext);
 		if (definition != null && !parserContext.isNested()) {
 			try {
 				String id = resolveId(element, definition, parserContext);
 				if (!StringUtils.hasText(id)) {
 					parserContext.getReaderContext().error(
-							"Id is required for element '" + parserContext.getDelegate().getLocalName(element)
-									+ "' when used as a top-level tag", element);
+							"Id is required for element '" + parserContext.getDelegate().getLocalName(element) +
+							"' when used as a top-level tag", element);
 				}
 				String[] aliases = null;
 				if (shouldParseNameAsAliases()) {
@@ -83,7 +85,8 @@ public abstract class AbstractBeanDefinitionParser implements BeanDefinitionPars
 				}
 			}
 			catch (BeanDefinitionStoreException ex) {
-				parserContext.getReaderContext().error(ex.getMessage(), element);
+				String msg = ex.getMessage();
+				parserContext.getReaderContext().error((msg != null ? msg : ex.toString()), element);
 				return null;
 			}
 		}
@@ -121,7 +124,7 @@ public abstract class AbstractBeanDefinitionParser implements BeanDefinitionPars
 	/**
 	 * Register the supplied {@link BeanDefinitionHolder bean} with the supplied
 	 * {@link BeanDefinitionRegistry registry}.
-	 * <p>Subclasses can override this method to control whether or not the supplied
+	 * <p>Subclasses can override this method to control whether the supplied
 	 * {@link BeanDefinitionHolder bean} is actually even registered, or to
 	 * register even more beans.
 	 * <p>The default implementation registers the supplied {@link BeanDefinitionHolder bean}
@@ -140,14 +143,14 @@ public abstract class AbstractBeanDefinitionParser implements BeanDefinitionPars
 	/**
 	 * Central template method to actually parse the supplied {@link Element}
 	 * into one or more {@link BeanDefinition BeanDefinitions}.
-	 * @param element	the element that is to be parsed into one or more {@link BeanDefinition BeanDefinitions}
+	 * @param element the element that is to be parsed into one or more {@link BeanDefinition BeanDefinitions}
 	 * @param parserContext the object encapsulating the current state of the parsing process;
 	 * provides access to a {@link org.springframework.beans.factory.support.BeanDefinitionRegistry}
 	 * @return the primary {@link BeanDefinition} resulting from the parsing of the supplied {@link Element}
 	 * @see #parse(org.w3c.dom.Element, ParserContext)
 	 * @see #postProcessComponentDefinition(org.springframework.beans.factory.parsing.BeanComponentDefinition)
 	 */
-	protected abstract AbstractBeanDefinition parseInternal(Element element, ParserContext parserContext);
+	protected abstract @Nullable AbstractBeanDefinition parseInternal(Element element, ParserContext parserContext);
 
 	/**
 	 * Should an ID be generated instead of read from the passed in {@link Element}?

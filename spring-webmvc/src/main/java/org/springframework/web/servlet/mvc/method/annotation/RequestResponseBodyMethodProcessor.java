@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,23 +18,26 @@ package org.springframework.web.servlet.mvc.method.annotation;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.net.URI;
 import java.util.List;
-import javax.servlet.http.HttpServletRequest;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.Conventions;
 import org.springframework.core.MethodParameter;
+import org.springframework.core.ResolvableType;
 import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpRange;
-import org.springframework.http.HttpRangeResource;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.validation.BindingResult;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.accept.ContentNegotiationManager;
@@ -53,15 +56,21 @@ import org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolv
  * to the body of the request or response with an {@link HttpMessageConverter}.
  *
  * <p>An {@code @RequestBody} method argument is also validated if it is annotated
- * with {@code @javax.validation.Valid}. In case of validation failure,
+ * with any
+ * {@linkplain org.springframework.validation.annotation.ValidationAnnotationUtils#determineValidationHints
+ * annotations that trigger validation}. In case of validation failure,
  * {@link MethodArgumentNotValidException} is raised and results in an HTTP 400
  * response status code if {@link DefaultHandlerExceptionResolver} is configured.
  *
  * @author Arjen Poutsma
  * @author Rossen Stoyanchev
+ * @author Juergen Hoeller
  * @since 3.1
  */
 public class RequestResponseBodyMethodProcessor extends AbstractMessageConverterMethodProcessor {
+
+	private final Map<Class<?>, Boolean> responseBodyControllerCache = new ConcurrentHashMap<>();
+
 
 	/**
 	 * Basic constructor with converters only. Suitable for resolving
@@ -79,7 +88,7 @@ public class RequestResponseBodyMethodProcessor extends AbstractMessageConverter
 	 * {@code ResponseBodyAdvice}.
 	 */
 	public RequestResponseBodyMethodProcessor(List<HttpMessageConverter<?>> converters,
-			ContentNegotiationManager manager) {
+			@Nullable ContentNegotiationManager manager) {
 
 		super(converters, manager);
 	}
@@ -91,19 +100,33 @@ public class RequestResponseBodyMethodProcessor extends AbstractMessageConverter
 	 * @since 4.2
 	 */
 	public RequestResponseBodyMethodProcessor(List<HttpMessageConverter<?>> converters,
-			List<Object> requestResponseBodyAdvice) {
+			@Nullable List<Object> requestResponseBodyAdvice) {
 
 		super(converters, null, requestResponseBodyAdvice);
 	}
 
 	/**
-	 * Complete constructor for resolving {@code @RequestBody} and handling
-	 * {@code @ResponseBody}.
+	 * Variant of {@link #RequestResponseBodyMethodProcessor(List, List)}
+	 * with an additional {@link ContentNegotiationManager} argument, for return
+	 * value handling.
 	 */
 	public RequestResponseBodyMethodProcessor(List<HttpMessageConverter<?>> converters,
-			ContentNegotiationManager manager, List<Object> requestResponseBodyAdvice) {
+			@Nullable ContentNegotiationManager manager, @Nullable List<Object> requestResponseBodyAdvice) {
 
 		super(converters, manager, requestResponseBodyAdvice);
+	}
+
+	/**
+	 * Variant of{@link #RequestResponseBodyMethodProcessor(List, ContentNegotiationManager, List)}
+	 * with an additional {@link ErrorResponse.Interceptor} argument for return
+	 * value handling.
+	 * @since 6.2
+	 */
+	public RequestResponseBodyMethodProcessor(List<HttpMessageConverter<?>> converters,
+			@Nullable ContentNegotiationManager manager, List<Object> requestResponseBodyAdvice,
+			List<ErrorResponse.Interceptor> interceptors) {
+
+		super(converters, manager, requestResponseBodyAdvice, interceptors);
 	}
 
 
@@ -114,7 +137,8 @@ public class RequestResponseBodyMethodProcessor extends AbstractMessageConverter
 
 	@Override
 	public boolean supportsReturnType(MethodParameter returnType) {
-		return (AnnotatedElementUtils.hasAnnotation(returnType.getContainingClass(), ResponseBody.class) ||
+		return (this.responseBodyControllerCache.computeIfAbsent(returnType.getContainingClass(),
+				clazz -> AnnotatedElementUtils.hasAnnotation(clazz, ResponseBody.class)) ||
 				returnType.hasMethodAnnotation(ResponseBody.class));
 	}
 
@@ -125,47 +149,50 @@ public class RequestResponseBodyMethodProcessor extends AbstractMessageConverter
 	 * converter to read the content with.
 	 */
 	@Override
-	public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-			NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
+	public @Nullable Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
 
-		Object arg = readWithMessageConverters(webRequest, parameter, parameter.getGenericParameterType());
-		String name = Conventions.getVariableNameForParameter(parameter);
+		parameter = parameter.nestedIfOptional();
+		Object arg = readWithMessageConverters(webRequest, parameter, parameter.getNestedGenericParameterType());
 
-		WebDataBinder binder = binderFactory.createBinder(webRequest, arg, name);
-		if (arg != null) {
-			validateIfApplicable(binder, parameter);
-			if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
-				throw new MethodArgumentNotValidException(parameter, binder.getBindingResult());
+		if (binderFactory != null) {
+			String name = Conventions.getVariableNameForParameter(parameter);
+			ResolvableType type = ResolvableType.forMethodParameter(parameter);
+			WebDataBinder binder = binderFactory.createBinder(webRequest, arg, name, type);
+			if (arg != null) {
+				validateIfApplicable(binder, parameter);
+				if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
+					throw new MethodArgumentNotValidException(parameter, binder.getBindingResult());
+				}
+			}
+			if (mavContainer != null) {
+				mavContainer.addAttribute(BindingResult.MODEL_KEY_PREFIX + name, binder.getBindingResult());
 			}
 		}
-		mavContainer.addAttribute(BindingResult.MODEL_KEY_PREFIX + name, binder.getBindingResult());
 
-		return arg;
+		return adaptArgumentIfNecessary(arg, parameter);
 	}
 
 	@Override
-	protected <T> Object readWithMessageConverters(NativeWebRequest webRequest, MethodParameter methodParam,
+	protected @Nullable Object readWithMessageConverters(NativeWebRequest webRequest, MethodParameter parameter,
 			Type paramType) throws IOException, HttpMediaTypeNotSupportedException, HttpMessageNotReadableException {
 
-		HttpServletRequest servletRequest = webRequest.getNativeRequest(HttpServletRequest.class);
-		ServletServerHttpRequest inputMessage = new ServletServerHttpRequest(servletRequest);
-
-		Object arg = readWithMessageConverters(inputMessage, methodParam, paramType);
-		if (arg == null) {
-			if (checkRequired(methodParam)) {
-				throw new HttpMessageNotReadableException("Required request body is missing: " +
-						methodParam.getMethod().toGenericString());
-			}
+		ServletServerHttpRequest inputMessage = createInputMessage(webRequest);
+		Object arg = readWithMessageConverters(inputMessage, parameter, paramType);
+		if (arg == null && checkRequired(parameter)) {
+			throw new HttpMessageNotReadableException("Required request body is missing: " +
+					parameter.getExecutable().toGenericString(), inputMessage);
 		}
 		return arg;
 	}
 
-	protected boolean checkRequired(MethodParameter methodParam) {
-		return methodParam.getParameterAnnotation(RequestBody.class).required();
+	protected boolean checkRequired(MethodParameter parameter) {
+		RequestBody requestBody = parameter.getParameterAnnotation(RequestBody.class);
+		return (requestBody != null && requestBody.required() && !parameter.isOptional());
 	}
 
 	@Override
-	public void handleReturnValue(Object returnValue, MethodParameter returnType,
+	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
 			ModelAndViewContainer mavContainer, NativeWebRequest webRequest)
 			throws IOException, HttpMediaTypeNotAcceptableException, HttpMessageNotWritableException {
 
@@ -173,19 +200,13 @@ public class RequestResponseBodyMethodProcessor extends AbstractMessageConverter
 		ServletServerHttpRequest inputMessage = createInputMessage(webRequest);
 		ServletServerHttpResponse outputMessage = createOutputMessage(webRequest);
 
-		if (inputMessage.getHeaders().containsKey(HttpHeaders.RANGE) &&
-				Resource.class.isAssignableFrom(returnValue.getClass())) {
-			try {
-				List<HttpRange> httpRanges = inputMessage.getHeaders().getRange();
-				Resource bodyResource = (Resource) returnValue;
-				returnValue = new HttpRangeResource(httpRanges, bodyResource);
-				outputMessage.setStatusCode(HttpStatus.PARTIAL_CONTENT);
+		if (returnValue instanceof ProblemDetail detail) {
+			outputMessage.setStatusCode(HttpStatusCode.valueOf(detail.getStatus()));
+			if (detail.getInstance() == null) {
+				URI path = URI.create(inputMessage.getServletRequest().getRequestURI());
+				detail.setInstance(path);
 			}
-			catch (IllegalArgumentException ex) {
-				outputMessage.setStatusCode(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
-				outputMessage.flush();
-				return;
-			}
+			invokeErrorResponseInterceptors(detail, null);
 		}
 
 		// Try even with null return value. ResponseBodyAdvice could get involved.

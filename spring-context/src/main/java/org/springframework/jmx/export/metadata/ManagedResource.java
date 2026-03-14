@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.jmx.export.metadata;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * Metadata indicating that instances of an annotated class
@@ -29,32 +31,32 @@ package org.springframework.jmx.export.metadata;
  */
 public class ManagedResource extends AbstractJmxAttribute {
 
-	private String objectName;
+	private @Nullable String objectName;
 
 	private boolean log = false;
 
-	private String logFile;
+	private @Nullable String logFile;
 
-	private String persistPolicy;
+	private @Nullable String persistPolicy;
 
 	private int persistPeriod = -1;
 
-	private String persistName;
+	private @Nullable String persistName;
 
-	private String persistLocation;
+	private @Nullable String persistLocation;
 
 
 	/**
 	 * Set the JMX ObjectName of this managed resource.
 	 */
-	public void setObjectName(String objectName) {
+	public void setObjectName(@Nullable String objectName) {
 		this.objectName = objectName;
 	}
 
 	/**
 	 * Return the JMX ObjectName of this managed resource.
 	 */
-	public String getObjectName() {
+	public @Nullable String getObjectName() {
 		return this.objectName;
 	}
 
@@ -66,19 +68,19 @@ public class ManagedResource extends AbstractJmxAttribute {
 		return this.log;
 	}
 
-	public void setLogFile(String logFile) {
+	public void setLogFile(@Nullable String logFile) {
 		this.logFile = logFile;
 	}
 
-	public String getLogFile() {
+	public @Nullable String getLogFile() {
 		return this.logFile;
 	}
 
-	public void setPersistPolicy(String persistPolicy) {
+	public void setPersistPolicy(@Nullable String persistPolicy) {
 		this.persistPolicy = persistPolicy;
 	}
 
-	public String getPersistPolicy() {
+	public @Nullable String getPersistPolicy() {
 		return this.persistPolicy;
 	}
 
@@ -90,19 +92,19 @@ public class ManagedResource extends AbstractJmxAttribute {
 		return this.persistPeriod;
 	}
 
-	public void setPersistName(String persistName) {
+	public void setPersistName(@Nullable String persistName) {
 		this.persistName = persistName;
 	}
 
-	public String getPersistName() {
+	public @Nullable String getPersistName() {
 		return this.persistName;
 	}
 
-	public void setPersistLocation(String persistLocation) {
+	public void setPersistLocation(@Nullable String persistLocation) {
 		this.persistLocation = persistLocation;
 	}
 
-	public String getPersistLocation() {
+	public @Nullable String getPersistLocation() {
 		return this.persistLocation;
 	}
 

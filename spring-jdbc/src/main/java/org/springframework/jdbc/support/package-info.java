@@ -6,4 +6,7 @@
  * <p>Can be used independently, for example in custom JDBC access code,
  * or in JDBC-based O/R mapping layers.
  */
+@NullMarked
 package org.springframework.jdbc.support;
+
+import org.jspecify.annotations.NullMarked;

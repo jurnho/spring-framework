@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,6 +22,7 @@ import java.util.Collection;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.cache.Cache;
 import org.springframework.cache.interceptor.AbstractCacheInvoker;
@@ -35,6 +36,8 @@ import org.springframework.util.CollectionUtils;
  *
  * @author Stephane Nicoll
  * @since 4.1
+ * @param <O> the operation type
+ * @param <A> the annotation type
  */
 @SuppressWarnings("serial")
 abstract class AbstractCacheInterceptor<O extends AbstractJCacheOperation<A>, A extends Annotation>
@@ -48,14 +51,14 @@ abstract class AbstractCacheInterceptor<O extends AbstractJCacheOperation<A>, A 
 	}
 
 
-	protected abstract Object invoke(CacheOperationInvocationContext<O> context, CacheOperationInvoker invoker)
+	protected abstract @Nullable Object invoke(CacheOperationInvocationContext<O> context, CacheOperationInvoker invoker)
 			throws Throwable;
 
 
 	/**
 	 * Resolve the cache to use.
 	 * @param context the invocation context
-	 * @return the cache to use (never null)
+	 * @return the cache to use (never {@code null})
 	 */
 	protected Cache resolveCache(CacheOperationInvocationContext<O> context) {
 		Collection<? extends Cache> caches = context.getOperation().getCacheResolver().resolveCaches(context);
@@ -69,9 +72,9 @@ abstract class AbstractCacheInterceptor<O extends AbstractJCacheOperation<A>, A 
 	/**
 	 * Convert the collection of caches in a single expected element.
 	 * <p>Throw an {@link IllegalStateException} if the collection holds more than one element
-	 * @return the singe element or {@code null} if the collection is empty
+	 * @return the single element, or {@code null} if the collection is empty
 	 */
-	static Cache extractFrom(Collection<? extends Cache> caches) {
+	static @Nullable Cache extractFrom(Collection<? extends Cache> caches) {
 		if (CollectionUtils.isEmpty(caches)) {
 			return null;
 		}

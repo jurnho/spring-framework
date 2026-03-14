@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,6 +22,9 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.StringJoiner;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.util.StringUtils;
 
@@ -79,7 +82,7 @@ import org.springframework.util.StringUtils;
  * {@link MessageCodeFormatter format}.
  *
  * <p>In order to group all codes into a specific category within your resource bundles,
- * e.g. "validation.typeMismatch.name" instead of the default "typeMismatch.name",
+ * for example, "validation.typeMismatch.name" instead of the default "typeMismatch.name",
  * consider specifying a {@link #setPrefix prefix} to be applied.
  *
  * @author Juergen Hoeller
@@ -108,18 +111,8 @@ public class DefaultMessageCodesResolver implements MessageCodesResolver, Serial
 	 * <p>Default is none. Specify, for example, "validation." to get
 	 * error codes like "validation.typeMismatch.name".
 	 */
-	public void setPrefix(String prefix) {
+	public void setPrefix(@Nullable String prefix) {
 		this.prefix = (prefix != null ? prefix : "");
-	}
-
-	/**
-	 * Specify the format for message codes built by this resolver.
-	 * <p>The default is {@link Format#PREFIX_ERROR_CODE}.
-	 * @since 3.2
-	 * @see Format
-	 */
-	public void setMessageCodeFormatter(MessageCodeFormatter formatter) {
-		this.formatter = (formatter == null ? DEFAULT_FORMATTER : formatter);
 	}
 
 	/**
@@ -128,6 +121,16 @@ public class DefaultMessageCodesResolver implements MessageCodesResolver, Serial
 	 */
 	protected String getPrefix() {
 		return this.prefix;
+	}
+
+	/**
+	 * Specify the format for message codes built by this resolver.
+	 * <p>The default is {@link Format#PREFIX_ERROR_CODE}.
+	 * @since 3.2
+	 * @see Format
+	 */
+	public void setMessageCodeFormatter(@Nullable MessageCodeFormatter formatter) {
+		this.formatter = (formatter != null ? formatter : DEFAULT_FORMATTER);
 	}
 
 
@@ -141,14 +144,14 @@ public class DefaultMessageCodesResolver implements MessageCodesResolver, Serial
 	 * object/field-specific code, a field-specific code, a plain error code.
 	 * <p>Arrays, Lists and Maps are resolved both for specific elements and
 	 * the whole collection.
-	 * <p>See the {@link DefaultMessageCodesResolver class level Javadoc} for
+	 * <p>See the {@link DefaultMessageCodesResolver class level javadoc} for
 	 * details on the generated codes.
 	 * @return the list of codes
 	 */
 	@Override
-	public String[] resolveMessageCodes(String errorCode, String objectName, String field, Class<?> fieldType) {
-		Set<String> codeList = new LinkedHashSet<String>();
-		List<String> fieldList = new ArrayList<String>();
+	public String[] resolveMessageCodes(String errorCode, String objectName, String field, @Nullable Class<?> fieldType) {
+		Set<String> codeList = new LinkedHashSet<>();
+		List<String> fieldList = new ArrayList<>();
 		buildFieldList(field, fieldList);
 		addCodes(codeList, errorCode, objectName, fieldList);
 		int dotIndex = field.lastIndexOf('.');
@@ -163,13 +166,13 @@ public class DefaultMessageCodesResolver implements MessageCodesResolver, Serial
 		return StringUtils.toStringArray(codeList);
 	}
 
-	private void addCodes(Collection<String> codeList, String errorCode, String objectName, Iterable<String> fields) {
+	private void addCodes(Collection<String> codeList, String errorCode, @Nullable String objectName, Iterable<String> fields) {
 		for (String field : fields) {
 			addCode(codeList, errorCode, objectName, field);
 		}
 	}
 
-	private void addCode(Collection<String> codeList, String errorCode, String objectName, String field) {
+	private void addCode(Collection<String> codeList, String errorCode, @Nullable String objectName, @Nullable String field) {
 		codeList.add(postProcessMessageCode(this.formatter.format(errorCode, objectName, field)));
 	}
 
@@ -208,33 +211,29 @@ public class DefaultMessageCodesResolver implements MessageCodesResolver, Serial
 
 	/**
 	 * Common message code formats.
-	 *
-	 * @author Phillip Webb
-	 * @author Chris Beams
-	 * @since 3.2
 	 * @see MessageCodeFormatter
 	 * @see DefaultMessageCodesResolver#setMessageCodeFormatter(MessageCodeFormatter)
 	 */
-	public static enum Format implements MessageCodeFormatter {
+	public enum Format implements MessageCodeFormatter {
 
 		/**
-		 * Prefix the error code at the beginning of the generated message code. e.g.:
+		 * Prefix the error code at the beginning of the generated message code. for example:
 		 * {@code errorCode + "." + object name + "." + field}
 		 */
 		PREFIX_ERROR_CODE {
 			@Override
-			public String format(String errorCode, String objectName, String field) {
+			public String format(String errorCode, @Nullable String objectName, @Nullable String field) {
 				return toDelimitedString(errorCode, objectName, field);
 			}
 		},
 
 		/**
-		 * Postfix the error code at the end of the generated message code. e.g.:
+		 * Postfix the error code at the end of the generated message code. for example:
 		 * {@code object name + "." + field + "." + errorCode}
 		 */
 		POSTFIX_ERROR_CODE {
 			@Override
-			public String format(String errorCode, String objectName, String field) {
+			public String format(String errorCode, @Nullable String objectName, @Nullable String field) {
 				return toDelimitedString(objectName, field, errorCode);
 			}
 		};
@@ -244,12 +243,11 @@ public class DefaultMessageCodesResolver implements MessageCodesResolver, Serial
 		 * {@link DefaultMessageCodesResolver#CODE_SEPARATOR}, skipping zero-length or
 		 * null elements altogether.
 		 */
-		public static String toDelimitedString(String... elements) {
-			StringBuilder rtn = new StringBuilder();
+		public static String toDelimitedString(@Nullable String... elements) {
+			StringJoiner rtn = new StringJoiner(CODE_SEPARATOR);
 			for (String element : elements) {
 				if (StringUtils.hasLength(element)) {
-					rtn.append(rtn.length() == 0 ? "" : CODE_SEPARATOR);
-					rtn.append(element);
+					rtn.add(element);
 				}
 			}
 			return rtn.toString();

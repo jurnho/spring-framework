@@ -4,4 +4,7 @@
  * org.springframework.cache.annotation.EnableCaching EnableCaching}
  * for details on code-based configuration without XML.
  */
+@NullMarked
 package org.springframework.cache.config;
+
+import org.jspecify.annotations.NullMarked;

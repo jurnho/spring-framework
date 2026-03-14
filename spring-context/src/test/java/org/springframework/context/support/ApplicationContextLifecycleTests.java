@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2007 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,74 +16,92 @@
 
 package org.springframework.context.support;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.core.io.ClassPathResource;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 /**
  * @author Mark Fisher
  * @author Chris Beams
+ * @author Juergen Hoeller
  */
-public class ApplicationContextLifecycleTests {
+class ApplicationContextLifecycleTests {
 
 	@Test
-	public void testBeansStart() {
+	void beansStart() {
 		AbstractApplicationContext context = new ClassPathXmlApplicationContext("lifecycleTests.xml", getClass());
+
 		context.start();
 		LifecycleTestBean bean1 = (LifecycleTestBean) context.getBean("bean1");
 		LifecycleTestBean bean2 = (LifecycleTestBean) context.getBean("bean2");
 		LifecycleTestBean bean3 = (LifecycleTestBean) context.getBean("bean3");
 		LifecycleTestBean bean4 = (LifecycleTestBean) context.getBean("bean4");
 		String error = "bean was not started";
-		assertTrue(error, bean1.isRunning());
-		assertTrue(error, bean2.isRunning());
-		assertTrue(error, bean3.isRunning());
-		assertTrue(error, bean4.isRunning());
+		assertThat(bean1.isRunning()).as(error).isTrue();
+		assertThat(bean2.isRunning()).as(error).isTrue();
+		assertThat(bean3.isRunning()).as(error).isTrue();
+		assertThat(bean4.isRunning()).as(error).isTrue();
+
+		context.close();
 	}
 
 	@Test
-	public void testBeansStop() {
+	void beansStop() {
 		AbstractApplicationContext context = new ClassPathXmlApplicationContext("lifecycleTests.xml", getClass());
+
 		context.start();
 		LifecycleTestBean bean1 = (LifecycleTestBean) context.getBean("bean1");
 		LifecycleTestBean bean2 = (LifecycleTestBean) context.getBean("bean2");
 		LifecycleTestBean bean3 = (LifecycleTestBean) context.getBean("bean3");
 		LifecycleTestBean bean4 = (LifecycleTestBean) context.getBean("bean4");
 		String startError = "bean was not started";
-		assertTrue(startError, bean1.isRunning());
-		assertTrue(startError, bean2.isRunning());
-		assertTrue(startError, bean3.isRunning());
-		assertTrue(startError, bean4.isRunning());
+		assertThat(bean1.isRunning()).as(startError).isTrue();
+		assertThat(bean2.isRunning()).as(startError).isTrue();
+		assertThat(bean3.isRunning()).as(startError).isTrue();
+		assertThat(bean4.isRunning()).as(startError).isTrue();
+
 		context.stop();
 		String stopError = "bean was not stopped";
-		assertFalse(stopError, bean1.isRunning());
-		assertFalse(stopError, bean2.isRunning());
-		assertFalse(stopError, bean3.isRunning());
-		assertFalse(stopError, bean4.isRunning());
+		assertThat(bean1.isRunning()).as(stopError).isFalse();
+		assertThat(bean2.isRunning()).as(stopError).isFalse();
+		assertThat(bean3.isRunning()).as(stopError).isFalse();
+		assertThat(bean4.isRunning()).as(stopError).isFalse();
+
+		context.close();
 	}
 
 	@Test
-	public void testStartOrder() {
+	void startOrder() {
 		AbstractApplicationContext context = new ClassPathXmlApplicationContext("lifecycleTests.xml", getClass());
+
 		context.start();
 		LifecycleTestBean bean1 = (LifecycleTestBean) context.getBean("bean1");
 		LifecycleTestBean bean2 = (LifecycleTestBean) context.getBean("bean2");
 		LifecycleTestBean bean3 = (LifecycleTestBean) context.getBean("bean3");
 		LifecycleTestBean bean4 = (LifecycleTestBean) context.getBean("bean4");
 		String notStartedError = "bean was not started";
-		assertTrue(notStartedError, bean1.getStartOrder() > 0);
-		assertTrue(notStartedError, bean2.getStartOrder() > 0);
-		assertTrue(notStartedError, bean3.getStartOrder() > 0);
-		assertTrue(notStartedError, bean4.getStartOrder() > 0);
+		assertThat(bean1.getStartOrder()).as(notStartedError).isGreaterThan(0);
+		assertThat(bean2.getStartOrder()).as(notStartedError).isGreaterThan(0);
+		assertThat(bean3.getStartOrder()).as(notStartedError).isGreaterThan(0);
+		assertThat(bean4.getStartOrder()).as(notStartedError).isGreaterThan(0);
 		String orderError = "dependent bean must start after the bean it depends on";
-		assertTrue(orderError, bean2.getStartOrder() > bean1.getStartOrder());
-		assertTrue(orderError, bean3.getStartOrder() > bean2.getStartOrder());
-		assertTrue(orderError, bean4.getStartOrder() > bean2.getStartOrder());
+		assertThat(bean2.getStartOrder()).as(orderError).isGreaterThan(bean1.getStartOrder());
+		assertThat(bean3.getStartOrder()).as(orderError).isGreaterThan(bean2.getStartOrder());
+		assertThat(bean4.getStartOrder()).as(orderError).isGreaterThan(bean2.getStartOrder());
+
+		context.close();
 	}
 
 	@Test
-	public void testStopOrder() {
+	void stopOrder() {
 		AbstractApplicationContext context = new ClassPathXmlApplicationContext("lifecycleTests.xml", getClass());
+
 		context.start();
 		context.stop();
 		LifecycleTestBean bean1 = (LifecycleTestBean) context.getBean("bean1");
@@ -91,14 +109,69 @@ public class ApplicationContextLifecycleTests {
 		LifecycleTestBean bean3 = (LifecycleTestBean) context.getBean("bean3");
 		LifecycleTestBean bean4 = (LifecycleTestBean) context.getBean("bean4");
 		String notStoppedError = "bean was not stopped";
-		assertTrue(notStoppedError, bean1.getStopOrder() > 0);
-		assertTrue(notStoppedError, bean2.getStopOrder() > 0);
-		assertTrue(notStoppedError, bean3.getStopOrder() > 0);
-		assertTrue(notStoppedError, bean4.getStopOrder() > 0);
+		assertThat(bean1.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean2.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean3.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean4.getStopOrder()).as(notStoppedError).isGreaterThan(0);
 		String orderError = "dependent bean must stop before the bean it depends on";
-		assertTrue(orderError, bean2.getStopOrder() < bean1.getStopOrder());
-		assertTrue(orderError, bean3.getStopOrder() < bean2.getStopOrder());
-		assertTrue(orderError, bean4.getStopOrder() < bean2.getStopOrder());
+		assertThat(bean2.getStopOrder()).as(orderError).isLessThan(bean1.getStopOrder());
+		assertThat(bean3.getStopOrder()).as(orderError).isLessThan(bean2.getStopOrder());
+		assertThat(bean4.getStopOrder()).as(orderError).isLessThan(bean2.getStopOrder());
+
+		context.close();
+	}
+
+	@Test
+	void autoStartup() {
+		GenericApplicationContext context = new GenericApplicationContext();
+		new XmlBeanDefinitionReader(context).loadBeanDefinitions(new ClassPathResource("smartLifecycleTests.xml", getClass()));
+
+		context.refresh();
+		LifecycleTestBean bean1 = (LifecycleTestBean) context.getBeanFactory().getBean("bean1");
+		LifecycleTestBean bean2 = (LifecycleTestBean) context.getBeanFactory().getBean("bean2");
+		LifecycleTestBean bean3 = (LifecycleTestBean) context.getBeanFactory().getBean("bean3");
+		LifecycleTestBean bean4 = (LifecycleTestBean) context.getBeanFactory().getBean("bean4");
+
+		context.close();
+		String notStoppedError = "bean was not stopped";
+		assertThat(bean1.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean2.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean3.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean4.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		String orderError = "dependent bean must stop before the bean it depends on";
+		assertThat(bean2.getStopOrder()).as(orderError).isLessThan(bean1.getStopOrder());
+		assertThat(bean3.getStopOrder()).as(orderError).isLessThan(bean2.getStopOrder());
+		assertThat(bean4.getStopOrder()).as(orderError).isLessThan(bean2.getStopOrder());
+	}
+
+	@Test
+	void cancelledRefresh() {
+		GenericApplicationContext context = new GenericApplicationContext();
+		new XmlBeanDefinitionReader(context).loadBeanDefinitions(new ClassPathResource("smartLifecycleTests.xml", getClass()));
+		context.registerBean(FailingContextRefreshedListener.class);
+		LifecycleTestBean bean1 = (LifecycleTestBean) context.getBeanFactory().getBean("bean1");
+		LifecycleTestBean bean2 = (LifecycleTestBean) context.getBeanFactory().getBean("bean2");
+		LifecycleTestBean bean3 = (LifecycleTestBean) context.getBeanFactory().getBean("bean3");
+		LifecycleTestBean bean4 = (LifecycleTestBean) context.getBeanFactory().getBean("bean4");
+
+		assertThatIllegalStateException().isThrownBy(context::refresh);
+		String notStoppedError = "bean was not stopped";
+		assertThat(bean1.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean2.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean3.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		assertThat(bean4.getStopOrder()).as(notStoppedError).isGreaterThan(0);
+		String orderError = "dependent bean must stop before the bean it depends on";
+		assertThat(bean2.getStopOrder()).as(orderError).isLessThan(bean1.getStopOrder());
+		assertThat(bean3.getStopOrder()).as(orderError).isLessThan(bean2.getStopOrder());
+		assertThat(bean4.getStopOrder()).as(orderError).isLessThan(bean2.getStopOrder());
+	}
+
+
+	private static class FailingContextRefreshedListener implements ApplicationListener<ContextRefreshedEvent> {
+
+		public void onApplicationEvent(ContextRefreshedEvent event) {
+			throw new IllegalStateException();
+		}
 	}
 
 }

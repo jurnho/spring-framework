@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -40,7 +40,10 @@ import org.springframework.aop.support.DefaultPointcutAdvisor;
 @SuppressWarnings("serial")
 public class DefaultAdvisorAdapterRegistry implements AdvisorAdapterRegistry, Serializable {
 
-	private final List<AdvisorAdapter> adapters = new ArrayList<AdvisorAdapter>(3);
+	private static final MethodInterceptor[] EMPTY_METHOD_INTERCEPTOR_ARRAY = new MethodInterceptor[0];
+
+
+	private final List<AdvisorAdapter> adapters = new ArrayList<>(3);
 
 
 	/**
@@ -55,13 +58,12 @@ public class DefaultAdvisorAdapterRegistry implements AdvisorAdapterRegistry, Se
 
 	@Override
 	public Advisor wrap(Object adviceObject) throws UnknownAdviceTypeException {
-		if (adviceObject instanceof Advisor) {
-			return (Advisor) adviceObject;
+		if (adviceObject instanceof Advisor advisor) {
+			return advisor;
 		}
-		if (!(adviceObject instanceof Advice)) {
+		if (!(adviceObject instanceof Advice advice)) {
 			throw new UnknownAdviceTypeException(adviceObject);
 		}
-		Advice advice = (Advice) adviceObject;
 		if (advice instanceof MethodInterceptor) {
 			// So well-known it doesn't even need an adapter.
 			return new DefaultPointcutAdvisor(advice);
@@ -77,10 +79,10 @@ public class DefaultAdvisorAdapterRegistry implements AdvisorAdapterRegistry, Se
 
 	@Override
 	public MethodInterceptor[] getInterceptors(Advisor advisor) throws UnknownAdviceTypeException {
-		List<MethodInterceptor> interceptors = new ArrayList<MethodInterceptor>(3);
+		List<MethodInterceptor> interceptors = new ArrayList<>(3);
 		Advice advice = advisor.getAdvice();
-		if (advice instanceof MethodInterceptor) {
-			interceptors.add((MethodInterceptor) advice);
+		if (advice instanceof MethodInterceptor methodInterceptor) {
+			interceptors.add(methodInterceptor);
 		}
 		for (AdvisorAdapter adapter : this.adapters) {
 			if (adapter.supportsAdvice(advice)) {
@@ -90,7 +92,7 @@ public class DefaultAdvisorAdapterRegistry implements AdvisorAdapterRegistry, Se
 		if (interceptors.isEmpty()) {
 			throw new UnknownAdviceTypeException(advisor.getAdvice());
 		}
-		return interceptors.toArray(new MethodInterceptor[interceptors.size()]);
+		return interceptors.toArray(EMPTY_METHOD_INTERCEPTOR_ARRAY);
 	}
 
 	@Override

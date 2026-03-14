@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,33 +20,37 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.QueueSession;
-import javax.jms.Session;
-import javax.jms.TemporaryQueue;
-import javax.jms.TemporaryTopic;
-import javax.jms.Topic;
-import javax.jms.TopicSession;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
+import jakarta.jms.TemporaryQueue;
+import jakarta.jms.TemporaryTopic;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicSession;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ObjectUtils;
-import org.springframework.util.ReflectionUtils;
 
 /**
- * {@link SingleConnectionFactory} subclass that adds {@link javax.jms.Session}
- * caching as well {@link javax.jms.MessageProducer} caching. This ConnectionFactory
+ * {@link SingleConnectionFactory} subclass that adds {@link Session} caching as well as
+ * {@link MessageProducer} and {@link MessageConsumer} caching. This ConnectionFactory
  * also switches the {@link #setReconnectOnException "reconnectOnException" property}
  * to "true" by default, allowing for automatic recovery of the underlying Connection.
  *
@@ -61,6 +65,11 @@ import org.springframework.util.ReflectionUtils;
  * lead to queue/topic mode, respectively; generic {@code createConnection}
  * calls will lead to a JMS 1.1 connection which is able to serve both modes.
  *
+ * <p>As of Spring Framework 5, this class supports JMS 2.0 {@code JMSContext}
+ * calls and therefore requires the JMS 2.0 API to be present at runtime.
+ * It may nevertheless run against a JMS 1.1 driver (bound to the JMS 2.0 API)
+ * as long as no actual JMS 2.0 calls are triggered by the application's setup.
+ *
  * <p><b>NOTE: This ConnectionFactory requires explicit closing of all Sessions
  * obtained from its shared Connection.</b> This is the usual recommendation for
  * native JMS access code anyway. However, with this ConnectionFactory, its use
@@ -73,19 +82,21 @@ import org.springframework.util.ReflectionUtils;
  * Re-registering a durable consumer for the same subscription on the same
  * Session handle is not supported; close and reobtain a cached Session first.
  *
+ * <p>Last but not least, MessageProducers and MessageConsumers for temporary
+ * queues and topics (TemporaryQueue/TemporaryTopic) will never be cached.
+ * Unfortunately, WebLogic JMS happens to implement the temporary queue/topic
+ * interfaces on its regular destination implementation, mis-indicating that
+ * none of its destinations can be cached. Please use a different connection
+ * pool/cache on WebLogic, or customize this class for WebLogic purposes.
+ *
  * @author Juergen Hoeller
  * @since 2.5.3
+ * @see Connection
+ * @see Session
+ * @see MessageProducer
+ * @see MessageConsumer
  */
 public class CachingConnectionFactory extends SingleConnectionFactory {
-
-	/** The JMS 2.0 Session.createSharedConsumer method, if available */
-	private static final Method createSharedConsumerMethod = ClassUtils.getMethodIfAvailable(
-			Session.class, "createSharedConsumer", Topic.class, String.class, String.class);
-
-	/** The JMS 2.0 Session.createSharedDurableConsumer method, if available */
-	private static final Method createSharedDurableConsumerMethod = ClassUtils.getMethodIfAvailable(
-			Session.class, "createSharedDurableConsumer", Topic.class, String.class, String.class);
-
 
 	private int sessionCacheSize = 1;
 
@@ -95,8 +106,7 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 
 	private volatile boolean active = true;
 
-	private final Map<Integer, LinkedList<Session>> cachedSessions =
-			new HashMap<Integer, LinkedList<Session>>();
+	private final ConcurrentMap<Integer, Deque<Session>> cachedSessions = new ConcurrentHashMap<>();
 
 
 	/**
@@ -181,13 +191,31 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 
 
 	/**
+	 * Return a current session count, indicating the number of sessions currently
+	 * cached by this connection factory.
+	 * @since 5.3.7
+	 */
+	public int getCachedSessionCount() {
+		int count = 0;
+		synchronized (this.cachedSessions) {
+			for (Deque<Session> sessionList : this.cachedSessions.values()) {
+				synchronized (sessionList) {
+					count += sessionList.size();
+				}
+			}
+		}
+		return count;
+	}
+
+	/**
 	 * Resets the Session cache as well.
 	 */
 	@Override
 	public void resetConnection() {
 		this.active = false;
+
 		synchronized (this.cachedSessions) {
-			for (LinkedList<Session> sessionList : this.cachedSessions.values()) {
+			for (Deque<Session> sessionList : this.cachedSessions.values()) {
 				synchronized (sessionList) {
 					for (Session session : sessionList) {
 						try {
@@ -201,25 +229,23 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 			}
 			this.cachedSessions.clear();
 		}
-		this.active = true;
 
 		// Now proceed with actual closing of the shared Connection...
 		super.resetConnection();
+
+		this.active = true;
 	}
 
 	/**
 	 * Checks for a cached Session for the given mode.
 	 */
 	@Override
-	protected Session getSession(Connection con, Integer mode) throws JMSException {
-		LinkedList<Session> sessionList;
-		synchronized (this.cachedSessions) {
-			sessionList = this.cachedSessions.get(mode);
-			if (sessionList == null) {
-				sessionList = new LinkedList<Session>();
-				this.cachedSessions.put(mode, sessionList);
-			}
+	protected @Nullable Session getSession(Connection con, Integer mode) throws JMSException {
+		if (!this.active) {
+			return null;
 		}
+
+		Deque<Session> sessionList = this.cachedSessions.computeIfAbsent(mode, key -> new ArrayDeque<>());
 		Session session = null;
 		synchronized (sessionList) {
 			if (!sessionList.isEmpty()) {
@@ -229,7 +255,7 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 		if (session != null) {
 			if (logger.isTraceEnabled()) {
 				logger.trace("Found cached JMS Session for mode " + mode + ": " +
-						(session instanceof SessionProxy ? ((SessionProxy) session).getTargetSession() : session));
+						(session instanceof SessionProxy sessionProxy ? sessionProxy.getTargetSession() : session));
 			}
 		}
 		else {
@@ -250,8 +276,8 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 	 * @param sessionList the List of cached Sessions that the given Session belongs to
 	 * @return the wrapped Session
 	 */
-	protected Session getCachedSessionProxy(Session target, LinkedList<Session> sessionList) {
-		List<Class<?>> classes = new ArrayList<Class<?>>(3);
+	protected Session getCachedSessionProxy(Session target, Deque<Session> sessionList) {
+		List<Class<?>> classes = new ArrayList<>(3);
 		classes.add(SessionProxy.class);
 		if (target instanceof QueueSession) {
 			classes.add(QueueSession.class);
@@ -259,10 +285,8 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 		if (target instanceof TopicSession) {
 			classes.add(TopicSession.class);
 		}
-		return (Session) Proxy.newProxyInstance(
-				SessionProxy.class.getClassLoader(),
-				classes.toArray(new Class<?>[classes.size()]),
-				new CachedSessionInvocationHandler(target, sessionList));
+		return (Session) Proxy.newProxyInstance(SessionProxy.class.getClassLoader(),
+				ClassUtils.toClassArray(classes), new CachedSessionInvocationHandler(target, sessionList));
 	}
 
 
@@ -273,23 +297,21 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 
 		private final Session target;
 
-		private final LinkedList<Session> sessionList;
+		private final Deque<Session> sessionList;
 
-		private final Map<DestinationCacheKey, MessageProducer> cachedProducers =
-				new HashMap<DestinationCacheKey, MessageProducer>();
+		private final Map<DestinationCacheKey, MessageProducer> cachedProducers = new HashMap<>();
 
-		private final Map<ConsumerCacheKey, MessageConsumer> cachedConsumers =
-				new HashMap<ConsumerCacheKey, MessageConsumer>();
+		private final Map<ConsumerCacheKey, MessageConsumer> cachedConsumers = new HashMap<>();
 
 		private boolean transactionOpen = false;
 
-		public CachedSessionInvocationHandler(Session target, LinkedList<Session> sessionList) {
+		public CachedSessionInvocationHandler(Session target, Deque<Session> sessionList) {
 			this.target = target;
 			this.sessionList = sessionList;
 		}
 
 		@Override
-		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+		public @Nullable Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 			String methodName = method.getName();
 			if (methodName.equals("equals")) {
 				// Only consider equal when proxies are identical.
@@ -335,49 +357,61 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 				if (isCacheProducers() && (methodName.equals("createProducer") ||
 						methodName.equals("createSender") || methodName.equals("createPublisher"))) {
 					// Destination argument being null is ok for a producer
-					return getCachedProducer((Destination) args[0]);
+					Destination dest = (Destination) args[0];
+					if (!(dest instanceof TemporaryQueue || dest instanceof TemporaryTopic)) {
+						return getCachedProducer(dest);
+					}
 				}
 				else if (isCacheConsumers()) {
 					// let raw JMS invocation throw an exception if Destination (i.e. args[0]) is null
-					if ((methodName.equals("createConsumer") || methodName.equals("createReceiver") ||
-							methodName.equals("createSubscriber"))) {
-						Destination dest = (Destination) args[0];
-						if (dest != null && !(dest instanceof TemporaryQueue || dest instanceof TemporaryTopic)) {
-							return getCachedConsumer(dest,
-									(args.length > 1 ? (String) args[1] : null),
-									(args.length > 2 && (Boolean) args[2]),
-									null,
-									false);
+					switch (methodName) {
+						case "createConsumer", "createReceiver", "createSubscriber" -> {
+							Destination dest = (Destination) args[0];
+							if (dest != null && !(dest instanceof TemporaryQueue || dest instanceof TemporaryTopic)) {
+								return getCachedConsumer(
+										dest,
+										(args.length > 1 ? (String) args[1] : null),
+										(args.length > 2 && (Boolean) args[2]),
+										null,
+										false
+								);
+							}
 						}
-					}
-					else if (methodName.equals("createDurableConsumer") || methodName.equals("createDurableSubscriber")) {
-						Destination dest = (Destination) args[0];
-						if (dest != null) {
-							return getCachedConsumer(dest,
-									(args.length > 2 ? (String) args[2] : null),
-									(args.length > 3 && (Boolean) args[3]),
-									(String) args[1],
-									true);
+						case "createDurableConsumer", "createDurableSubscriber" -> {
+							Destination dest = (Destination) args[0];
+							if (dest != null) {
+								return getCachedConsumer(
+										dest,
+										(args.length > 2 ? (String) args[2] : null),
+										(args.length > 3 && (Boolean) args[3]),
+										(String) args[1],
+										true
+								);
+							}
 						}
-					}
-					else if (methodName.equals("createSharedConsumer")) {
-						Destination dest = (Destination) args[0];
-						if (dest != null) {
-							return getCachedConsumer(dest,
-									(args.length > 2 ? (String) args[2] : null),
-									null,
-									(String) args[1],
-									false);
+						case "createSharedConsumer" -> {
+							Destination dest = (Destination) args[0];
+							if (dest != null) {
+								return getCachedConsumer(
+										dest,
+										(args.length > 2 ? (String) args[2] : null),
+										null,
+										(String) args[1],
+										false
+								);
+							}
 						}
-					}
-					else if (methodName.equals("createSharedDurableConsumer")) {
-						Destination dest = (Destination) args[0];
-						if (dest != null) {
-							return getCachedConsumer(dest,
-									(args.length > 2 ? (String) args[2] : null),
-									null,
-									(String) args[1],
-									true);
+						case "createSharedDurableConsumer" -> {
+							Destination dest = (Destination) args[0];
+							if (dest != null) {
+								return getCachedConsumer(
+										dest,
+										(args.length > 2 ? (String) args[2] : null),
+										null,
+										(String) args[1],
+										true
+								);
+							}
 						}
 					}
 				}
@@ -390,7 +424,7 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 			}
 		}
 
-		private MessageProducer getCachedProducer(Destination dest) throws JMSException {
+		private MessageProducer getCachedProducer(@Nullable Destination dest) throws JMSException {
 			DestinationCacheKey cacheKey = (dest != null ? new DestinationCacheKey(dest) : null);
 			MessageProducer producer = this.cachedProducers.get(cacheKey);
 			if (producer != null) {
@@ -405,11 +439,12 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 				}
 				this.cachedProducers.put(cacheKey, producer);
 			}
-			return new CachedMessageProducer(producer).getProxyIfNecessary();
+			return new CachedMessageProducer(producer);
 		}
 
-		private MessageConsumer getCachedConsumer(
-				Destination dest, String selector, Boolean noLocal, String subscription, boolean durable) throws JMSException {
+		@SuppressWarnings("resource")
+		private MessageConsumer getCachedConsumer(Destination dest, @Nullable String selector,
+				@Nullable Boolean noLocal, @Nullable String subscription, boolean durable) throws JMSException {
 
 			ConsumerCacheKey cacheKey = new ConsumerCacheKey(dest, selector, noLocal, subscription, durable);
 			MessageConsumer consumer = this.cachedConsumers.get(cacheKey);
@@ -419,27 +454,15 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 				}
 			}
 			else {
-				if (dest instanceof Topic) {
+				if (dest instanceof Topic topic) {
 					if (noLocal == null) {
-						// createSharedConsumer((Topic) dest, subscription, selector);
-						// createSharedDurableConsumer((Topic) dest, subscription, selector);
-						Method method = (durable ? createSharedDurableConsumerMethod : createSharedConsumerMethod);
-						try {
-							consumer = (MessageConsumer) method.invoke(this.target, dest, subscription, selector);
-						}
-						catch (InvocationTargetException ex) {
-							if (ex.getTargetException() instanceof JMSException) {
-								throw (JMSException) ex.getTargetException();
-							}
-							ReflectionUtils.handleInvocationTargetException(ex);
-						}
-						catch (IllegalAccessException ex) {
-							throw new IllegalStateException("Could not access JMS 2.0 API method: " + ex.getMessage());
-						}
+						consumer = (durable ?
+								this.target.createSharedDurableConsumer(topic, subscription, selector) :
+								this.target.createSharedConsumer(topic, subscription, selector));
 					}
 					else {
 						consumer = (durable ?
-								this.target.createDurableSubscriber((Topic) dest, subscription, selector, noLocal) :
+								this.target.createDurableSubscriber(topic, subscription, selector, noLocal) :
 								this.target.createConsumer(dest, selector, noLocal));
 					}
 				}
@@ -513,7 +536,7 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 
 		private final Destination destination;
 
-		private String destinationString;
+		private @Nullable String destinationString;
 
 		public DestinationCacheKey(Destination destination) {
 			Assert.notNull(destination, "Destination must not be null");
@@ -534,10 +557,10 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 		}
 
 		@Override
-		public boolean equals(Object other) {
+		public boolean equals(@Nullable Object other) {
 			// Effectively checking object equality as well as toString equality.
 			// On WebSphere MQ, Destination objects do not implement equals...
-			return (this == other || destinationEquals((DestinationCacheKey) other));
+			return (this == other || (other instanceof DestinationCacheKey that && destinationEquals(that)));
 		}
 
 		@Override
@@ -566,15 +589,17 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 	 */
 	private static class ConsumerCacheKey extends DestinationCacheKey {
 
-		private final String selector;
+		private final @Nullable String selector;
 
-		private final Boolean noLocal;
+		private final @Nullable Boolean noLocal;
 
-		private final String subscription;
+		private final @Nullable String subscription;
 
 		private final boolean durable;
 
-		public ConsumerCacheKey(Destination destination, String selector, Boolean noLocal, String subscription, boolean durable) {
+		public ConsumerCacheKey(Destination destination, @Nullable String selector, @Nullable Boolean noLocal,
+				@Nullable String subscription, boolean durable) {
+
 			super(destination);
 			this.selector = selector;
 			this.noLocal = noLocal;
@@ -583,16 +608,18 @@ public class CachingConnectionFactory extends SingleConnectionFactory {
 		}
 
 		@Override
-		public boolean equals(Object other) {
-			if (this == other) {
-				return true;
-			}
-			ConsumerCacheKey otherKey = (ConsumerCacheKey) other;
-			return (destinationEquals(otherKey) &&
-					ObjectUtils.nullSafeEquals(this.selector, otherKey.selector) &&
-					ObjectUtils.nullSafeEquals(this.noLocal, otherKey.noLocal) &&
-					ObjectUtils.nullSafeEquals(this.subscription, otherKey.subscription) &&
-					this.durable == otherKey.durable);
+		public boolean equals(@Nullable Object other) {
+			return (this == other || (other instanceof ConsumerCacheKey that &&
+					destinationEquals(that) &&
+					ObjectUtils.nullSafeEquals(this.selector, that.selector) &&
+					ObjectUtils.nullSafeEquals(this.noLocal, that.noLocal) &&
+					ObjectUtils.nullSafeEquals(this.subscription, that.subscription) &&
+					this.durable == that.durable));
+		}
+
+		@Override
+		public int hashCode() {
+			return super.hashCode() * 31 + ObjectUtils.nullSafeHashCode(this.selector);
 		}
 
 		@Override

@@ -1,11 +1,11 @@
 /*
- * Copyright 2011 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,30 +16,26 @@
 
 package org.springframework.test.web.client.samples;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.Test;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.stereotype.Controller;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-import org.springframework.test.context.web.WebAppConfiguration;
+import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.client.MockMvcClientHttpRequestFactory;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import static org.junit.Assert.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Tests that use a {@link RestTemplate} configured with a
@@ -48,44 +44,66 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * the TestContext framework.
  *
  * @author Rossen Stoyanchev
+ * @author Juergen Hoeller
  */
-@RunWith(SpringJUnit4ClassRunner.class)
-@WebAppConfiguration
-@ContextConfiguration
-public class MockMvcClientHttpRequestFactoryTests {
+@SpringJUnitWebConfig
+@SuppressWarnings("deprecation")
+class MockMvcClientHttpRequestFactoryTests {
 
-	@Autowired
-	private WebApplicationContext wac;
+	private final RestTemplate template;
 
-	private RestTemplate restTemplate;
+	MockMvcClientHttpRequestFactoryTests(WebApplicationContext wac) {
+		MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(wac).build();
+		this.template = new RestTemplate(new MockMvcClientHttpRequestFactory(mockMvc));
+	}
 
 
-	@Before
-	public void setup() {
-		MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(this.wac).alwaysExpect(status().isOk()).build();
-		this.restTemplate = new RestTemplate(new MockMvcClientHttpRequestFactory(mockMvc));
+	@Test
+	void withResult() {
+		assertThat(template.getForObject("/foo", String.class)).isEqualTo("bar");
 	}
 
 	@Test
-	public void test() throws Exception {
-		String result = this.restTemplate.getForObject("/foo", String.class);
-		assertEquals("bar", result);
+	void withError() {
+		assertThatExceptionOfType(HttpClientErrorException.class)
+				.isThrownBy(() -> template.getForEntity("/error", String.class))
+				.withMessageContaining("400")
+				.withMessageContaining("some bad request");
+	}
+
+	@Test
+	void withErrorAndBody() {
+		assertThatExceptionOfType(HttpClientErrorException.class)
+				.isThrownBy(() -> template.getForEntity("/errorbody", String.class))
+				.withMessageContaining("400")
+				.withMessageContaining("some really bad request");
 	}
 
 
 	@EnableWebMvc
-	@Configuration
-	@ComponentScan(basePackageClasses=MockMvcClientHttpRequestFactoryTests.class)
-	static class MyWebConfig extends WebMvcConfigurerAdapter {
+	@Configuration(proxyBeanMethods = false)
+	@Import(MyController.class)
+	static class MyWebConfig implements WebMvcConfigurer {
 	}
 
 	@Controller
 	static class MyController {
 
-		@RequestMapping(value="/foo", method=RequestMethod.GET)
+		@GetMapping("/foo")
 		@ResponseBody
-		public String handle() {
+		String handle() {
 			return "bar";
+		}
+
+		@GetMapping("/error")
+		void handleError(HttpServletResponse response) throws Exception {
+			response.sendError(400, "some bad request");
+		}
+
+		@GetMapping("/errorbody")
+		void handleErrorWithBody(HttpServletResponse response) throws Exception {
+			response.sendError(400, "some bad request");
+			response.getWriter().write("some really bad request");
 		}
 	}
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,39 +16,42 @@
 
 package org.springframework.http;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.ObjectUtils;
 
 /**
  * Represents an HTTP request or response entity, consisting of headers and body.
  *
- * <p>Typically used in combination with the {@link org.springframework.web.client.RestTemplate},
+ * <p>Often used in combination with the {@link org.springframework.web.client.RestTemplate},
  * like so:
  * <pre class="code">
  * HttpHeaders headers = new HttpHeaders();
  * headers.setContentType(MediaType.TEXT_PLAIN);
- * HttpEntity&lt;String&gt; entity = new HttpEntity&lt;String&gt;(helloWorld, headers);
- * URI location = template.postForLocation("http://example.com", entity);
+ * HttpEntity&lt;String&gt; entity = new HttpEntity&lt;&gt;("Hello World", headers);
+ * URI location = template.postForLocation("https://example.com", entity);
  * </pre>
  * or
  * <pre class="code">
- * HttpEntity&lt;String&gt; entity = template.getForEntity("http://example.com", String.class);
+ * HttpEntity&lt;String&gt; entity = template.getForEntity("https://example.com", String.class);
  * String body = entity.getBody();
  * MediaType contentType = entity.getHeaders().getContentType();
  * </pre>
  * Can also be used in Spring MVC, as a return value from a @Controller method:
  * <pre class="code">
- * &#64;RequestMapping("/handle")
+ * &#64;GetMapping("/handle")
  * public HttpEntity&lt;String&gt; handle() {
  *   HttpHeaders responseHeaders = new HttpHeaders();
  *   responseHeaders.set("MyResponseHeader", "MyValue");
- *   return new HttpEntity&lt;String&gt;("Hello World", responseHeaders);
+ *   return new HttpEntity&lt;&gt;("Hello World", responseHeaders);
  * }
  * </pre>
  *
  * @author Arjen Poutsma
  * @author Juergen Hoeller
  * @since 3.0.2
+ * @param <T> the body type
  * @see org.springframework.web.client.RestTemplate
  * @see #getBody()
  * @see #getHeaders()
@@ -56,21 +59,22 @@ import org.springframework.util.ObjectUtils;
 public class HttpEntity<T> {
 
 	/**
-	 * The empty {@code HttpEntity}, with no body or headers.
+	 * An {@code HttpEntity} instance with a {@code null} body and
+	 * {@link HttpHeaders#EMPTY empty headers}.
 	 */
-	public static final HttpEntity<?> EMPTY = new HttpEntity<Object>();
+	public static final HttpEntity<?> EMPTY = new HttpEntity<>(HttpHeaders.EMPTY);
 
 
 	private final HttpHeaders headers;
 
-	private final T body;
+	private final @Nullable T body;
 
 
 	/**
 	 * Create a new, empty {@code HttpEntity}.
 	 */
 	protected HttpEntity() {
-		this(null, null);
+		this(null, (HttpHeaders) null);
 	}
 
 	/**
@@ -78,13 +82,35 @@ public class HttpEntity<T> {
 	 * @param body the entity body
 	 */
 	public HttpEntity(T body) {
-		this(body, null);
+		this(body, (HttpHeaders) null);
 	}
 
 	/**
 	 * Create a new {@code HttpEntity} with the given headers and no body.
 	 * @param headers the entity headers
+	 * @since 7.0
 	 */
+	public HttpEntity(HttpHeaders headers) {
+		this(null, headers);
+	}
+
+	/**
+	 * Create a new {@code HttpEntity} with the given body and headers.
+	 * @param body the entity body
+	 * @param headers the entity headers
+	 * @since 7.0
+	 */
+	public HttpEntity(@Nullable T body, @Nullable HttpHeaders headers) {
+		this.body = body;
+		this.headers = (headers != null) ? headers : new HttpHeaders();
+	}
+
+	/**
+	 * Create a new {@code HttpEntity} with the given headers and no body.
+	 * @param headers the entity headers
+	 * @deprecated in favor of {@link #HttpEntity(HttpHeaders)}
+	 */
+	@Deprecated(since = "7.0", forRemoval = true)
 	public HttpEntity(MultiValueMap<String, String> headers) {
 		this(null, headers);
 	}
@@ -93,14 +119,11 @@ public class HttpEntity<T> {
 	 * Create a new {@code HttpEntity} with the given body and headers.
 	 * @param body the entity body
 	 * @param headers the entity headers
+	 * @deprecated in favor of {@link #HttpEntity(Object, HttpHeaders)}
 	 */
-	public HttpEntity(T body, MultiValueMap<String, String> headers) {
-		this.body = body;
-		HttpHeaders tempHeaders = new HttpHeaders();
-		if (headers != null) {
-			tempHeaders.putAll(headers);
-		}
-		this.headers = HttpHeaders.readOnlyHttpHeaders(tempHeaders);
+	@Deprecated(since = "7.0", forRemoval = true)
+	public HttpEntity(@Nullable T body, @Nullable MultiValueMap<String, String> headers) {
+		this(body, (headers != null) ? new HttpHeaders(headers) : new HttpHeaders());
 	}
 
 
@@ -114,7 +137,7 @@ public class HttpEntity<T> {
 	/**
 	 * Returns the body of this entity.
 	 */
-	public T getBody() {
+	public @Nullable T getBody() {
 		return this.body;
 	}
 
@@ -127,7 +150,7 @@ public class HttpEntity<T> {
 
 
 	@Override
-	public boolean equals(Object other) {
+	public boolean equals(@Nullable Object other) {
 		if (this == other) {
 			return true;
 		}
@@ -141,7 +164,7 @@ public class HttpEntity<T> {
 
 	@Override
 	public int hashCode() {
-		return (ObjectUtils.nullSafeHashCode(this.headers) * 29 + ObjectUtils.nullSafeHashCode(this.body));
+		return ObjectUtils.nullSafeHash(this.headers, this.body);
 	}
 
 	@Override
@@ -149,13 +172,9 @@ public class HttpEntity<T> {
 		StringBuilder builder = new StringBuilder("<");
 		if (this.body != null) {
 			builder.append(this.body);
-			if (this.headers != null) {
-				builder.append(',');
-			}
+			builder.append(',');
 		}
-		if (this.headers != null) {
-			builder.append(this.headers);
-		}
+		builder.append(this.headers);
 		builder.append('>');
 		return builder.toString();
 	}

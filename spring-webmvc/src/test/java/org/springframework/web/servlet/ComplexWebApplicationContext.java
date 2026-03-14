@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,19 +21,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
-import javax.servlet.Servlet;
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+
+import jakarta.servlet.Servlet;
+import jakarta.servlet.ServletConfig;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.BeansException;
 import org.springframework.beans.MutablePropertyValues;
 import org.springframework.beans.factory.config.RuntimeBeanReference;
 import org.springframework.beans.factory.support.ManagedList;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.context.support.ApplicationObjectSupport;
@@ -63,10 +64,8 @@ import org.springframework.web.servlet.mvc.ParameterizableViewController;
 import org.springframework.web.servlet.mvc.SimpleControllerHandlerAdapter;
 import org.springframework.web.servlet.support.RequestContext;
 import org.springframework.web.servlet.support.RequestContextUtils;
-import org.springframework.web.servlet.theme.SessionThemeResolver;
-import org.springframework.web.servlet.theme.ThemeChangeInterceptor;
+import org.springframework.web.servlet.view.InternalResourceView;
 import org.springframework.web.servlet.view.InternalResourceViewResolver;
-import org.springframework.web.servlet.view.ResourceBundleViewResolver;
 import org.springframework.web.util.WebUtils;
 
 /**
@@ -78,30 +77,23 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 	@Override
 	public void refresh() throws BeansException {
 		registerSingleton(DispatcherServlet.LOCALE_RESOLVER_BEAN_NAME, SessionLocaleResolver.class);
-		registerSingleton(DispatcherServlet.THEME_RESOLVER_BEAN_NAME, SessionThemeResolver.class);
 
 		LocaleChangeInterceptor interceptor1 = new LocaleChangeInterceptor();
 		LocaleChangeInterceptor interceptor2 = new LocaleChangeInterceptor();
 		interceptor2.setParamName("locale2");
-		ThemeChangeInterceptor interceptor3 = new ThemeChangeInterceptor();
-		ThemeChangeInterceptor interceptor4 = new ThemeChangeInterceptor();
-		interceptor4.setParamName("theme2");
-		UserRoleAuthorizationInterceptor interceptor5 = new UserRoleAuthorizationInterceptor();
-		interceptor5.setAuthorizedRoles(new String[] {"role1", "role2"});
+		UserRoleAuthorizationInterceptor interceptor3 = new UserRoleAuthorizationInterceptor();
+		interceptor3.setAuthorizedRoles("role1", "role2");
 
 		List<Object> interceptors = new ArrayList<>();
-		interceptors.add(interceptor5);
+		interceptors.add(interceptor3);
 		interceptors.add(interceptor1);
 		interceptors.add(interceptor2);
-		interceptors.add(interceptor3);
-		interceptors.add(interceptor4);
 		interceptors.add(new MyHandlerInterceptor1());
 		interceptors.add(new MyHandlerInterceptor2());
 		interceptors.add(new MyWebRequestInterceptor());
 
 		MutablePropertyValues pvs = new MutablePropertyValues();
-		pvs.add(
-				"mappings", "/view.do=viewHandler\n/locale.do=localeHandler\nloc.do=anotherLocaleHandler");
+		pvs.add("mappings", "/view.do=viewHandler\n/locale.do=localeHandler\nloc.do=anotherLocaleHandler");
 		pvs.add("interceptors", interceptors);
 		registerSingleton("myUrlMapping1", SimpleUrlHandlerMapping.class, pvs);
 
@@ -113,8 +105,11 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 
 		pvs = new MutablePropertyValues();
 		pvs.add(
-				"mappings", "/head.do=headController\n" +
-				"body.do=bodyController\n/noview*=noviewController\n/noview/simple*=noviewController");
+				"mappings", """
+						/head.do=headController
+						body.do=bodyController
+						/noview*=noviewController
+						/noview/simple*=noviewController""");
 		pvs.add("order", "1");
 		registerSingleton("handlerMapping", SimpleUrlHandlerMapping.class, pvs);
 
@@ -124,9 +119,7 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 		registerSingleton("noviewController", NoViewController.class);
 
 		pvs = new MutablePropertyValues();
-		pvs.add("order", new Integer(0));
-		pvs.add("basename", "org.springframework.web.servlet.complexviews");
-		registerSingleton("viewResolver", ResourceBundleViewResolver.class, pvs);
+		registerSingleton("viewResolver", TestViewResolver.class, pvs);
 
 		pvs = new MutablePropertyValues();
 		pvs.add("suffix", ".jsp");
@@ -148,22 +141,26 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 		registerSingleton("myServlet", MyServlet.class);
 
 		pvs = new MutablePropertyValues();
-		pvs.add("order", "1");
+		pvs.add("order", "2");
 		pvs.add("exceptionMappings",
-			"java.lang.IllegalAccessException=failed2\n" +
-			"ServletRequestBindingException=failed3");
+				"java.lang.IllegalAccessException=failed2\n" +
+				"ServletRequestBindingException=failed3");
 		pvs.add("defaultErrorView", "failed0");
+		registerSingleton("exceptionResolver2", SimpleMappingExceptionResolver.class, pvs);
+
+		pvs = new MutablePropertyValues();
+		pvs.add("order", "1");
+		pvs.add("exceptionMappings", "java.lang.Exception=failed1");
+		pvs.add("mappedHandlers", ManagedList.of(new RuntimeBeanReference("anotherLocaleHandler")));
+		pvs.add("defaultStatusCode", "500");
+		pvs.add("defaultErrorView", "failed2");
 		registerSingleton("exceptionResolver1", SimpleMappingExceptionResolver.class, pvs);
 
 		pvs = new MutablePropertyValues();
 		pvs.add("order", "0");
-		pvs.add("exceptionMappings", "java.lang.Exception=failed1");
-		List<RuntimeBeanReference> mappedHandlers = new ManagedList<RuntimeBeanReference>();
-		mappedHandlers.add(new RuntimeBeanReference("anotherLocaleHandler"));
-		pvs.add("mappedHandlers", mappedHandlers);
-		pvs.add("defaultStatusCode", "500");
-		pvs.add("defaultErrorView", "failed2");
-		registerSingleton("handlerExceptionResolver", SimpleMappingExceptionResolver.class, pvs);
+		pvs.add("exceptionMappings", "org.springframework.web.servlet.NoHandlerFoundException=notFound");
+		pvs.add("defaultStatusCode", "404");
+		registerSingleton("exceptionResolver0", SimpleMappingExceptionResolver.class, pvs);
 
 		registerSingleton("multipartResolver", MockMultipartResolver.class);
 		registerSingleton("testListener", TestApplicationListener.class);
@@ -237,11 +234,11 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 	}
 
 
-	public static interface MyHandler {
+	public interface MyHandler {
 
-		public void doSomething(HttpServletRequest request) throws ServletException, IllegalAccessException;
+		void doSomething(HttpServletRequest request) throws ServletException, IllegalAccessException;
 
-		public long lastModified();
+		long lastModified();
 	}
 
 
@@ -259,14 +256,10 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 
 		@Override
 		public ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object delegate)
-			throws ServletException, IllegalAccessException {
+				throws ServletException, IllegalAccessException {
+
 			((MyHandler) delegate).doSomething(request);
 			return null;
-		}
-
-		@Override
-		public long getLastModified(HttpServletRequest request, Object delegate) {
-			return ((MyHandler) delegate).lastModified();
 		}
 	}
 
@@ -283,11 +276,6 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 			throws IOException, ServletException {
 			throw new ServletException("dummy");
 		}
-
-		@Override
-		public long getLastModified(HttpServletRequest request, Object delegate) {
-			return -1;
-		}
 	}
 
 
@@ -295,7 +283,8 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 
 		@Override
 		public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
-			throws ServletException {
+				throws ServletException {
+
 			if (request.getAttribute("test2") != null) {
 				throw new ServletException("Wrong interceptor order");
 			}
@@ -307,8 +296,9 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 
 		@Override
 		public void postHandle(
-				HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView)
+				HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable ModelAndView modelAndView)
 				throws ServletException {
+
 			if (request.getAttribute("test2x") != null) {
 				throw new ServletException("Wrong interceptor order");
 			}
@@ -322,8 +312,12 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 		public void afterCompletion(
 				HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex)
 				throws ServletException {
+
 			if (request.getAttribute("test2y") != null) {
 				throw new ServletException("Wrong interceptor order");
+			}
+			if (request.getAttribute("test1y") == null) {
+				throw new ServletException("afterCompletion invoked twice");
 			}
 			request.removeAttribute("test1y");
 		}
@@ -334,7 +328,8 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 
 		@Override
 		public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
-			throws ServletException {
+				throws ServletException {
+
 			if (request.getAttribute("test1x") == null) {
 				throw new ServletException("Wrong interceptor order");
 			}
@@ -349,8 +344,9 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 
 		@Override
 		public void postHandle(
-				HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView)
+				HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable ModelAndView modelAndView)
 				throws ServletException {
+
 			if (request.getParameter("noView") != null) {
 				modelAndView.clear();
 			}
@@ -367,8 +363,12 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 		public void afterCompletion(
 				HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex)
 				throws Exception {
+
 			if (request.getAttribute("test1y") == null) {
 				throw new ServletException("Wrong interceptor order");
+			}
+			if (request.getAttribute("test2y") == null) {
+				throw new ServletException("afterCompletion invoked twice");
 			}
 			request.removeAttribute("test2y");
 		}
@@ -383,12 +383,12 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 		}
 
 		@Override
-		public void postHandle(WebRequest request, ModelMap model) throws Exception {
+		public void postHandle(WebRequest request, @Nullable ModelMap model) {
 			request.setAttribute("test3x", "test3x", WebRequest.SCOPE_REQUEST);
 		}
 
 		@Override
-		public void afterCompletion(WebRequest request, Exception ex) throws Exception {
+		public void afterCompletion(WebRequest request, @Nullable Exception ex) {
 			request.setAttribute("test3y", "test3y", WebRequest.SCOPE_REQUEST);
 		}
 	}
@@ -399,7 +399,7 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 		@Override
 		@SuppressWarnings("deprecation")
 		public void doSomething(HttpServletRequest request) throws ServletException, IllegalAccessException {
-			WebApplicationContext wac = RequestContextUtils.getWebApplicationContext(request);
+			WebApplicationContext wac = RequestContextUtils.findWebApplicationContext(request);
 			if (!(wac instanceof ComplexWebApplicationContext)) {
 				throw new ServletException("Incorrect WebApplicationContext");
 			}
@@ -433,15 +433,8 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 			if (!TimeZone.getDefault().equals(LocaleContextHolder.getTimeZone())) {
 				throw new ServletException("Incorrect TimeZone");
 			}
-			if (!(RequestContextUtils.getThemeResolver(request) instanceof SessionThemeResolver)) {
-				throw new ServletException("Incorrect ThemeResolver");
-			}
-			if (!"theme".equals(RequestContextUtils.getThemeResolver(request).resolveThemeName(request))) {
-				throw new ServletException("Incorrect theme name");
-			}
 			RequestContext rc = new RequestContext(request);
 			rc.changeLocale(Locale.US, TimeZone.getTimeZone("GMT+1"));
-			rc.changeTheme("theme2");
 			if (!Locale.US.equals(RequestContextUtils.getLocale(request))) {
 				throw new ServletException("Incorrect Locale");
 			}
@@ -453,9 +446,6 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 			}
 			if (!TimeZone.getTimeZone("GMT+1").equals(LocaleContextHolder.getTimeZone())) {
 				throw new ServletException("Incorrect TimeZone");
-			}
-			if (!"theme2".equals(RequestContextUtils.getThemeResolver(request).resolveThemeName(request))) {
-				throw new ServletException("Incorrect theme name");
 			}
 		}
 
@@ -507,15 +497,32 @@ public class ComplexWebApplicationContext extends StaticWebApplicationContext {
 	}
 
 
-	public static class TestApplicationListener implements ApplicationListener<ApplicationEvent> {
+	private static class TestViewResolver implements ViewResolver, Ordered {
+
+		@Override
+		public int getOrder() {
+			return 0;
+		}
+
+		@Override
+		public @Nullable View resolveViewName(String viewName, Locale locale) throws Exception {
+			if (viewName.equalsIgnoreCase("form")) {
+				InternalResourceView view = new InternalResourceView("myform.jsp");
+				view.setRequestContextAttribute("rc");
+				return view;
+			}
+			return null;
+		}
+	}
+
+
+	public static class TestApplicationListener implements ApplicationListener<RequestHandledEvent> {
 
 		public int counter = 0;
 
 		@Override
-		public void onApplicationEvent(ApplicationEvent event) {
-			if (event instanceof RequestHandledEvent) {
-				this.counter++;
-			}
+		public void onApplicationEvent(RequestHandledEvent event) {
+			this.counter++;
 		}
 	}
 

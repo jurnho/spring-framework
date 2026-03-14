@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.expression.spel.standard;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.expression.ParseException;
 import org.springframework.expression.ParserContext;
@@ -27,6 +29,7 @@ import org.springframework.util.Assert;
  *
  * @author Andy Clement
  * @author Juergen Hoeller
+ * @author Sam Brannen
  * @since 3.0
  */
 public class SpelExpressionParser extends TemplateAwareExpressionParser {
@@ -52,11 +55,12 @@ public class SpelExpressionParser extends TemplateAwareExpressionParser {
 
 
 	public SpelExpression parseRaw(String expressionString) throws ParseException {
+		Assert.hasText(expressionString, "'expressionString' must not be null or blank");
 		return doParseExpression(expressionString, null);
 	}
 
 	@Override
-	protected SpelExpression doParseExpression(String expressionString, ParserContext context) throws ParseException {
+	protected SpelExpression doParseExpression(String expressionString, @Nullable ParserContext context) throws ParseException {
 		return new InternalSpelExpressionParser(this.configuration).doParseExpression(expressionString, context);
 	}
 

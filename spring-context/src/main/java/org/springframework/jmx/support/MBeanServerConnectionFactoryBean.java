@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,10 +21,13 @@ import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+
 import javax.management.MBeanServerConnection;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.TargetSource;
 import org.springframework.aop.framework.ProxyFactory;
@@ -33,6 +36,7 @@ import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.CollectionUtils;
 
@@ -52,19 +56,19 @@ import org.springframework.util.CollectionUtils;
 public class MBeanServerConnectionFactoryBean
 		implements FactoryBean<MBeanServerConnection>, BeanClassLoaderAware, InitializingBean, DisposableBean {
 
-	private JMXServiceURL serviceUrl;
+	private @Nullable JMXServiceURL serviceUrl;
 
-	private Map<String, Object> environment = new HashMap<String, Object>();
+	private final Map<String, Object> environment = new HashMap<>();
 
 	private boolean connectOnStartup = true;
 
-	private ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
+	private @Nullable ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
 
-	private JMXConnector connector;
+	private @Nullable JMXConnector connector;
 
-	private MBeanServerConnection connection;
+	private @Nullable MBeanServerConnection connection;
 
-	private JMXConnectorLazyInitTargetSource connectorTargetSource;
+	private @Nullable JMXConnectorLazyInitTargetSource connectorTargetSource;
 
 
 	/**
@@ -86,14 +90,15 @@ public class MBeanServerConnectionFactoryBean
 	 * Set the environment properties used to construct the {@code JMXConnector}
 	 * as a {@code Map} of String keys and arbitrary Object values.
 	 */
-	public void setEnvironmentMap(Map<String, ?> environment) {
+	public void setEnvironmentMap(@Nullable Map<String, ?> environment) {
 		if (environment != null) {
 			this.environment.putAll(environment);
 		}
 	}
 
 	/**
-	 * Set whether to connect to the server on startup. Default is "true".
+	 * Set whether to connect to the server on startup.
+	 * <p>Default is {@code true}.
 	 * <p>Can be turned off to allow for late start of the JMX server.
 	 * In this case, the JMX connector will be fetched on first access.
 	 */
@@ -130,12 +135,13 @@ public class MBeanServerConnectionFactoryBean
 	 * environment properties.
 	 */
 	private void connect() throws IOException {
+		Assert.state(this.serviceUrl != null, "No JMXServiceURL set");
 		this.connector = JMXConnectorFactory.connect(this.serviceUrl, this.environment);
 		this.connection = this.connector.getMBeanServerConnection();
 	}
 
 	/**
-	 * Creates lazy proxies for the {@code JMXConnector} and {@code MBeanServerConnection}
+	 * Creates lazy proxies for the {@code JMXConnector} and {@code MBeanServerConnection}.
 	 */
 	private void createLazyConnection() {
 		this.connectorTargetSource = new JMXConnectorLazyInitTargetSource();
@@ -149,7 +155,7 @@ public class MBeanServerConnectionFactoryBean
 
 
 	@Override
-	public MBeanServerConnection getObject() {
+	public @Nullable MBeanServerConnection getObject() {
 		return this.connection;
 	}
 
@@ -169,7 +175,8 @@ public class MBeanServerConnectionFactoryBean
 	 */
 	@Override
 	public void destroy() throws IOException {
-		if (this.connectorTargetSource == null || this.connectorTargetSource.isInitialized()) {
+		if (this.connector != null &&
+				(this.connectorTargetSource == null || this.connectorTargetSource.isInitialized())) {
 			this.connector.close();
 		}
 	}
@@ -185,6 +192,7 @@ public class MBeanServerConnectionFactoryBean
 
 		@Override
 		protected Object createObject() throws Exception {
+			Assert.state(serviceUrl != null, "No JMXServiceURL set");
 			return JMXConnectorFactory.connect(serviceUrl, environment);
 		}
 
@@ -202,6 +210,7 @@ public class MBeanServerConnectionFactoryBean
 
 		@Override
 		protected Object createObject() throws Exception {
+			Assert.state(connector != null, "JMXConnector not initialized");
 			return connector.getMBeanServerConnection();
 		}
 

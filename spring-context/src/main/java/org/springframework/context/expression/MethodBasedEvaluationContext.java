@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,7 +17,11 @@
 package org.springframework.context.expression;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 
+import org.jspecify.annotations.Nullable;
+
+import org.springframework.core.KotlinDetector;
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.util.ObjectUtils;
@@ -34,38 +38,41 @@ import org.springframework.util.ObjectUtils;
  * </ol>
  *
  * @author Stephane Nicoll
+ * @author Juergen Hoeller
+ * @author Sebastien Deleuze
  * @since 4.2
  */
 public class MethodBasedEvaluationContext extends StandardEvaluationContext {
 
 	private final Method method;
 
-	private final Object[] args;
+	private final @Nullable Object[] arguments;
 
-	private final ParameterNameDiscoverer paramDiscoverer;
+	private final ParameterNameDiscoverer parameterNameDiscoverer;
 
-	private boolean paramLoaded = false;
+	private boolean argumentsLoaded = false;
 
 
-	public MethodBasedEvaluationContext(Object rootObject, Method method, Object[] args,
-			ParameterNameDiscoverer paramDiscoverer) {
+	public MethodBasedEvaluationContext(@Nullable Object rootObject, Method method, @Nullable Object[] arguments,
+			ParameterNameDiscoverer parameterNameDiscoverer) {
 
 		super(rootObject);
 		this.method = method;
-		this.args = args;
-		this.paramDiscoverer = paramDiscoverer;
+		this.arguments = (KotlinDetector.isSuspendingFunction(method) ?
+				Arrays.copyOf(arguments, arguments.length - 1) : arguments);
+		this.parameterNameDiscoverer = parameterNameDiscoverer;
 	}
 
 
 	@Override
-	public Object lookupVariable(String name) {
+	public @Nullable Object lookupVariable(String name) {
 		Object variable = super.lookupVariable(name);
 		if (variable != null) {
 			return variable;
 		}
-		if (!this.paramLoaded) {
+		if (!this.argumentsLoaded) {
 			lazyLoadArguments();
-			this.paramLoaded = true;
+			this.argumentsLoaded = true;
 			variable = super.lookupVariable(name);
 		}
 		return variable;
@@ -75,22 +82,30 @@ public class MethodBasedEvaluationContext extends StandardEvaluationContext {
 	 * Load the param information only when needed.
 	 */
 	protected void lazyLoadArguments() {
-		// shortcut if no args need to be loaded
-		if (ObjectUtils.isEmpty(this.args)) {
+		// Shortcut if no args need to be loaded
+		if (ObjectUtils.isEmpty(this.arguments)) {
 			return;
 		}
 
-		// save arguments as indexed variables
-		for (int i = 0; i < this.args.length; i++) {
-			setVariable("a" + i, this.args[i]);
-			setVariable("p" + i, this.args[i]);
-		}
+		// Expose indexed variables as well as parameter names (if discoverable)
+		@Nullable String[] paramNames = this.parameterNameDiscoverer.getParameterNames(this.method);
+		int paramCount = (paramNames != null ? paramNames.length : this.method.getParameterCount());
+		int argsCount = this.arguments.length;
 
-		String[] parameterNames = this.paramDiscoverer.getParameterNames(this.method);
-		// save parameter names (if discovered)
-		if (parameterNames != null) {
-			for (int i = 0; i < parameterNames.length; i++) {
-				setVariable(parameterNames[i], this.args[i]);
+		for (int i = 0; i < paramCount; i++) {
+			Object value = null;
+			if (argsCount > paramCount && i == paramCount - 1) {
+				// Expose remaining arguments as vararg array for last parameter
+				value = Arrays.copyOfRange(this.arguments, i, argsCount);
+			}
+			else if (argsCount > i) {
+				// Actual argument found - otherwise left as null
+				value = this.arguments[i];
+			}
+			setVariable("a" + i, value);
+			setVariable("p" + i, value);
+			if (paramNames != null && paramNames[i] != null) {
+				setVariable(paramNames[i], value);
 			}
 		}
 	}

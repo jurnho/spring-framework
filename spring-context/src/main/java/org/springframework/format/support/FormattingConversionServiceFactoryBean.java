@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.format.support;
 
 import java.util.Set;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
@@ -31,24 +33,19 @@ import org.springframework.format.Printer;
 import org.springframework.util.StringValueResolver;
 
 /**
- * A factory providing convenient access to a {@code FormattingConversionService}
- * configured with converters and formatters for common types such as numbers and
- * datetimes.
+ * A factory providing convenient access to a {@link FormattingConversionService}
+ * configured with converters and formatters for common types such as numbers, dates,
+ * and times.
  *
  * <p>Additional converters and formatters can be registered declaratively through
  * {@link #setConverters(Set)} and {@link #setFormatters(Set)}. Another option
  * is to register converters and formatters in code by implementing the
- * {@link FormatterRegistrar} interface. You can then configure provide the set
- * of registrars to use through {@link #setFormatterRegistrars(Set)}.
- *
- * <p>A good example for registering converters and formatters in code is
- * {@code JodaTimeFormatterRegistrar}, which registers a number of
- * date-related formatters and converters. For a more detailed list of cases
- * see {@link #setFormatterRegistrars(Set)}
+ * {@link FormatterRegistrar} interface. You can then provide the set of registrars
+ * to use through {@link #setFormatterRegistrars(Set)}.
  *
  * <p>Like all {@code FactoryBean} implementations, this class is suitable for
  * use when configuring a Spring application context using Spring {@code <beans>}
- * XML. When configuring the container with
+ * XML configuration files. When configuring the container with
  * {@link org.springframework.context.annotation.Configuration @Configuration}
  * classes, simply instantiate, configure and return the appropriate
  * {@code FormattingConversionService} object from a
@@ -63,17 +60,17 @@ import org.springframework.util.StringValueResolver;
 public class FormattingConversionServiceFactoryBean
 		implements FactoryBean<FormattingConversionService>, EmbeddedValueResolverAware, InitializingBean {
 
-	private Set<?> converters;
+	private @Nullable Set<?> converters;
 
-	private Set<?> formatters;
+	private @Nullable Set<?> formatters;
 
-	private Set<FormatterRegistrar> formatterRegistrars;
+	private @Nullable Set<FormatterRegistrar> formatterRegistrars;
 
 	private boolean registerDefaultFormatters = true;
 
-	private StringValueResolver embeddedValueResolver;
+	private @Nullable StringValueResolver embeddedValueResolver;
 
-	private FormattingConversionService conversionService;
+	private @Nullable FormattingConversionService conversionService;
 
 
 	/**
@@ -134,17 +131,17 @@ public class FormattingConversionServiceFactoryBean
 	public void afterPropertiesSet() {
 		this.conversionService = new DefaultFormattingConversionService(this.embeddedValueResolver, this.registerDefaultFormatters);
 		ConversionServiceFactory.registerConverters(this.converters, this.conversionService);
-		registerFormatters();
+		registerFormatters(this.conversionService);
 	}
 
-	private void registerFormatters() {
+	private void registerFormatters(FormattingConversionService conversionService) {
 		if (this.formatters != null) {
-			for (Object formatter : this.formatters) {
-				if (formatter instanceof Formatter<?>) {
-					this.conversionService.addFormatter((Formatter<?>) formatter);
+			for (Object candidate : this.formatters) {
+				if (candidate instanceof Formatter<?> formatter) {
+					conversionService.addFormatter(formatter);
 				}
-				else if (formatter instanceof AnnotationFormatterFactory<?>) {
-					this.conversionService.addFormatterForFieldAnnotation((AnnotationFormatterFactory<?>) formatter);
+				else if (candidate instanceof AnnotationFormatterFactory<?> factory) {
+					conversionService.addFormatterForFieldAnnotation(factory);
 				}
 				else {
 					throw new IllegalArgumentException(
@@ -154,14 +151,14 @@ public class FormattingConversionServiceFactoryBean
 		}
 		if (this.formatterRegistrars != null) {
 			for (FormatterRegistrar registrar : this.formatterRegistrars) {
-				registrar.registerFormatters(this.conversionService);
+				registrar.registerFormatters(conversionService);
 			}
 		}
 	}
 
 
 	@Override
-	public FormattingConversionService getObject() {
+	public @Nullable FormattingConversionService getObject() {
 		return this.conversionService;
 	}
 

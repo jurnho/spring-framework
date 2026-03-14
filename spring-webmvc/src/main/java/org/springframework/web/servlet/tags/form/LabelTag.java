@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,19 +16,157 @@
 
 package org.springframework.web.servlet.tags.form;
 
-import javax.servlet.jsp.JspException;
+import jakarta.servlet.jsp.JspException;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
- * Databinding-aware JSP tag for rendering an HTML '{@code label}' element
- * that defines text that is associated with a single form element.
- *
- * <p>The {@link #setFor(String) 'for'} attribute is required.
+ * The {@code <label>} tag renders a form field label in an HTML 'label' tag.
  *
  * <p>See the "formTags" showcase application that ships with the
  * full Spring distribution for an example of this class in action.
+ *
+ * <h3>Attribute Summary</h3>
+ * <table>
+ * <thead>
+ * <tr>
+ * <th class="table-header col-first">Attribute</th>
+ * <th class="table-header col-second">Required?</th>
+ * <th class="table-header col-second">Runtime Expression?</th>
+ * <th class="table-header col-last">Description</th>
+ * </tr>
+ * </thead>
+ * <tbody>
+ * <tr class="even-row-color">
+ * <td><p>cssClass</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute.</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>cssErrorClass</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute. Used only when errors are present.</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>cssStyle</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Optional Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>dir</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>for</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>htmlEscape</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Enable/disable HTML escaping of rendered values.</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>id</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>lang</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onclick</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>ondblclick</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onkeydown</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onkeypress</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onkeyup</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onmousedown</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmousemove</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onmouseout</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>onmouseover</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>onmouseup</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Event Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>path</p></td>
+ * <td><p>true</p></td>
+ * <td><p>true</p></td>
+ * <td><p>Path to errors object for data binding</p></td>
+ * </tr>
+ * <tr class="odd-row-color">
+ * <td><p>tabindex</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * <tr class="even-row-color">
+ * <td><p>title</p></td>
+ * <td><p>false</p></td>
+ * <td><p>true</p></td>
+ * <td><p>HTML Standard Attribute</p></td>
+ * </tr>
+ * </tbody>
+ * </table>
  *
  * @author Rob Harrop
  * @author Juergen Hoeller
@@ -52,21 +190,19 @@ public class LabelTag extends AbstractHtmlElementTag {
 	 * The {@link TagWriter} instance being used.
 	 * <p>Stored so we can close the tag on {@link #doEndTag()}.
 	 */
-	private TagWriter tagWriter;
+	private @Nullable TagWriter tagWriter;
 
 	/**
 	 * The value of the '{@code for}' attribute.
 	 */
-	private String forId;
+	private @Nullable String forId;
 
 
 	/**
 	 * Set the value of the '{@code for}' attribute.
 	 * <p>Defaults to the value of {@link #getPath}; may be a runtime expression.
-	 * @throws IllegalArgumentException if the supplied value is {@code null}
 	 */
 	public void setFor(String forId) {
-		Assert.notNull(forId, "'forId' must not be null");
 		this.forId = forId;
 	}
 
@@ -74,7 +210,7 @@ public class LabelTag extends AbstractHtmlElementTag {
 	 * Get the value of the '{@code id}' attribute.
 	 * <p>May be a runtime expression.
 	 */
-	public String getFor() {
+	protected @Nullable String getFor() {
 		return this.forId;
 	}
 
@@ -82,7 +218,7 @@ public class LabelTag extends AbstractHtmlElementTag {
 	/**
 	 * Writes the opening '{@code label}' tag and forces a block tag so
 	 * that body content is written correctly.
-	 * @return {@link javax.servlet.jsp.tagext.Tag#EVAL_BODY_INCLUDE}
+	 * @return {@link jakarta.servlet.jsp.tagext.Tag#EVAL_BODY_INCLUDE}
 	 */
 	@Override
 	protected int writeTagContent(TagWriter tagWriter) throws JspException {
@@ -95,13 +231,13 @@ public class LabelTag extends AbstractHtmlElementTag {
 	}
 
 	/**
-	 * Overrides {@link #getName()} to always return {@code null},
+	 * Overrides {@code #getName()} to always return {@code null},
 	 * because the '{@code name}' attribute is not supported by the
 	 * '{@code label}' tag.
 	 * @return the value for the HTML '{@code name}' attribute
 	 */
 	@Override
-	protected String getName() throws JspException {
+	protected @Nullable String getName() throws JspException {
 		// This also suppresses the 'id' attribute (which is okay for a <label/>)
 		return null;
 	}
@@ -135,6 +271,7 @@ public class LabelTag extends AbstractHtmlElementTag {
 	 */
 	@Override
 	public int doEndTag() throws JspException {
+		Assert.state(this.tagWriter != null, "No TagWriter set");
 		this.tagWriter.endTag();
 		return EVAL_PAGE;
 	}

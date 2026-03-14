@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,14 +17,20 @@
 package org.springframework.jdbc.datasource.lookup;
 
 import java.sql.Connection;
+import java.sql.ConnectionBuilder;
 import java.sql.SQLException;
-import java.util.HashMap;
+import java.sql.ShardingKeyBuilder;
+import java.util.Collections;
 import java.util.Map;
+
 import javax.sql.DataSource;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jdbc.datasource.AbstractDataSource;
 import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 
 /**
  * Abstract {@link javax.sql.DataSource} implementation that routes {@link #getConnection()}
@@ -39,22 +45,22 @@ import org.springframework.util.Assert;
  */
 public abstract class AbstractRoutingDataSource extends AbstractDataSource implements InitializingBean {
 
-	private Map<Object, Object> targetDataSources;
+	private @Nullable Map<Object, Object> targetDataSources;
 
-	private Object defaultTargetDataSource;
+	private @Nullable Object defaultTargetDataSource;
 
 	private boolean lenientFallback = true;
 
 	private DataSourceLookup dataSourceLookup = new JndiDataSourceLookup();
 
-	private Map<Object, DataSource> resolvedDataSources;
+	private @Nullable Map<Object, DataSource> resolvedDataSources;
 
-	private DataSource resolvedDefaultDataSource;
+	private @Nullable DataSource resolvedDefaultDataSource;
 
 
 	/**
 	 * Specify the map of target DataSources, with the lookup key as key.
-	 * The mapped value can either be a corresponding {@link javax.sql.DataSource}
+	 * <p>The mapped value can either be a corresponding {@link javax.sql.DataSource}
 	 * instance or a data source name String (to be resolved via a
 	 * {@link #setDataSourceLookup DataSourceLookup}).
 	 * <p>The key can be of arbitrary type; this class implements the
@@ -102,22 +108,39 @@ public abstract class AbstractRoutingDataSource extends AbstractDataSource imple
 	 * <p>Default is a {@link JndiDataSourceLookup}, allowing the JNDI names
 	 * of application server DataSources to be specified directly.
 	 */
-	public void setDataSourceLookup(DataSourceLookup dataSourceLookup) {
+	public void setDataSourceLookup(@Nullable DataSourceLookup dataSourceLookup) {
 		this.dataSourceLookup = (dataSourceLookup != null ? dataSourceLookup : new JndiDataSourceLookup());
 	}
 
 
+	/**
+	 * Delegates to {@link #initialize()}.
+	 */
 	@Override
 	public void afterPropertiesSet() {
+		initialize();
+	}
+
+	/**
+	 * Initialize the internal state of this {@code AbstractRoutingDataSource}
+	 * by resolving the configured target DataSources.
+	 * @throws IllegalArgumentException if the target DataSources have not been configured
+	 * @since 6.1
+	 * @see #setTargetDataSources(Map)
+	 * @see #setDefaultTargetDataSource(Object)
+	 * @see #getResolvedDataSources()
+	 * @see #getResolvedDefaultDataSource()
+	 */
+	public void initialize() {
 		if (this.targetDataSources == null) {
 			throw new IllegalArgumentException("Property 'targetDataSources' is required");
 		}
-		this.resolvedDataSources = new HashMap<Object, DataSource>(this.targetDataSources.size());
-		for (Map.Entry<Object, Object> entry : this.targetDataSources.entrySet()) {
-			Object lookupKey = resolveSpecifiedLookupKey(entry.getKey());
-			DataSource dataSource = resolveSpecifiedDataSource(entry.getValue());
+		this.resolvedDataSources = CollectionUtils.newHashMap(this.targetDataSources.size());
+		this.targetDataSources.forEach((key, value) -> {
+			Object lookupKey = resolveSpecifiedLookupKey(key);
+			DataSource dataSource = resolveSpecifiedDataSource(value);
 			this.resolvedDataSources.put(lookupKey, dataSource);
-		}
+		});
 		if (this.defaultTargetDataSource != null) {
 			this.resolvedDefaultDataSource = resolveSpecifiedDataSource(this.defaultTargetDataSource);
 		}
@@ -140,22 +163,44 @@ public abstract class AbstractRoutingDataSource extends AbstractDataSource imple
 	 * Resolve the specified data source object into a DataSource instance.
 	 * <p>The default implementation handles DataSource instances and data source
 	 * names (to be resolved via a {@link #setDataSourceLookup DataSourceLookup}).
-	 * @param dataSource the data source value object as specified in the
+	 * @param dataSourceObject the data source value object as specified in the
 	 * {@link #setTargetDataSources targetDataSources} map
 	 * @return the resolved DataSource (never {@code null})
 	 * @throws IllegalArgumentException in case of an unsupported value type
 	 */
-	protected DataSource resolveSpecifiedDataSource(Object dataSource) throws IllegalArgumentException {
-		if (dataSource instanceof DataSource) {
-			return (DataSource) dataSource;
+	protected DataSource resolveSpecifiedDataSource(Object dataSourceObject) throws IllegalArgumentException {
+		if (dataSourceObject instanceof DataSource dataSource) {
+			return dataSource;
 		}
-		else if (dataSource instanceof String) {
-			return this.dataSourceLookup.getDataSource((String) dataSource);
+		else if (dataSourceObject instanceof String dataSourceName) {
+			return this.dataSourceLookup.getDataSource(dataSourceName);
 		}
 		else {
 			throw new IllegalArgumentException(
-					"Illegal data source value - only [javax.sql.DataSource] and String supported: " + dataSource);
+					"Illegal data source value - only [javax.sql.DataSource] and String supported: " + dataSourceObject);
 		}
+	}
+
+	/**
+	 * Return the resolved target DataSources that this router manages.
+	 * @return an unmodifiable map of resolved lookup keys and DataSources
+	 * @throws IllegalStateException if the target DataSources are not resolved yet
+	 * @since 5.2.9
+	 * @see #setTargetDataSources
+	 */
+	public Map<Object, DataSource> getResolvedDataSources() {
+		Assert.state(this.resolvedDataSources != null, "DataSources not resolved yet - call afterPropertiesSet");
+		return Collections.unmodifiableMap(this.resolvedDataSources);
+	}
+
+	/**
+	 * Return the resolved default target DataSource, if any.
+	 * @return the default DataSource, or {@code null} if none or not resolved yet
+	 * @since 5.2.9
+	 * @see #setDefaultTargetDataSource
+	 */
+	public @Nullable DataSource getResolvedDefaultDataSource() {
+		return this.resolvedDefaultDataSource;
 	}
 
 
@@ -167,6 +212,16 @@ public abstract class AbstractRoutingDataSource extends AbstractDataSource imple
 	@Override
 	public Connection getConnection(String username, String password) throws SQLException {
 		return determineTargetDataSource().getConnection(username, password);
+	}
+
+	@Override
+	public ConnectionBuilder createConnectionBuilder() throws SQLException {
+		return determineTargetDataSource().createConnectionBuilder();
+	}
+
+	@Override
+	public ShardingKeyBuilder createShardingKeyBuilder() throws SQLException {
+		return determineTargetDataSource().createShardingKeyBuilder();
 	}
 
 	@Override
@@ -182,6 +237,7 @@ public abstract class AbstractRoutingDataSource extends AbstractDataSource imple
 	public boolean isWrapperFor(Class<?> iface) throws SQLException {
 		return (iface.isInstance(this) || determineTargetDataSource().isWrapperFor(iface));
 	}
+
 
 	/**
 	 * Retrieve the current target DataSource. Determines the
@@ -211,6 +267,6 @@ public abstract class AbstractRoutingDataSource extends AbstractDataSource imple
 	 * to match the stored lookup key type, as resolved by the
 	 * {@link #resolveSpecifiedLookupKey} method.
 	 */
-	protected abstract Object determineCurrentLookupKey();
+	protected abstract @Nullable Object determineCurrentLookupKey();
 
 }

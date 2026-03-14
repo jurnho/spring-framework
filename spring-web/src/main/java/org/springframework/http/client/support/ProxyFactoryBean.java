@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +19,8 @@ package org.springframework.http.client.support;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.SocketAddress;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
@@ -36,11 +38,11 @@ public class ProxyFactoryBean implements FactoryBean<Proxy>, InitializingBean {
 
 	private Proxy.Type type = Proxy.Type.HTTP;
 
-	private String hostname;
+	private @Nullable String hostname;
 
 	private int port = -1;
 
-	private Proxy proxy;
+	private @Nullable Proxy proxy;
 
 
 	/**
@@ -68,10 +70,10 @@ public class ProxyFactoryBean implements FactoryBean<Proxy>, InitializingBean {
 
 	@Override
 	public void afterPropertiesSet() throws IllegalArgumentException {
-		Assert.notNull(this.type, "'type' must not be null");
-		Assert.hasLength(this.hostname, "'hostname' must not be empty");
+		Assert.notNull(this.type, "Property 'type' is required");
+		Assert.notNull(this.hostname, "Property 'hostname' is required");
 		if (this.port < 0 || this.port > 65535) {
-			throw new IllegalArgumentException("'port' value out of range: " + this.port);
+			throw new IllegalArgumentException("Property 'port' value out of range: " + this.port);
 		}
 
 		SocketAddress socketAddress = new InetSocketAddress(this.hostname, this.port);
@@ -80,7 +82,7 @@ public class ProxyFactoryBean implements FactoryBean<Proxy>, InitializingBean {
 
 
 	@Override
-	public Proxy getObject() {
+	public @Nullable Proxy getObject() {
 		return this.proxy;
 	}
 

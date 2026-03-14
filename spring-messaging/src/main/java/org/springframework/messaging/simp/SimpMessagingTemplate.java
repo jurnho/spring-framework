@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.messaging.simp;
 
 import java.util.Map;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -38,8 +40,7 @@ import org.springframework.util.StringUtils;
  *
  * <p>Also provides methods for sending messages to a user. See
  * {@link org.springframework.messaging.simp.user.UserDestinationResolver
- * UserDestinationResolver}
- * for more on user destinations.
+ * UserDestinationResolver} for more on user destinations.
  *
  * @author Rossen Stoyanchev
  * @since 4.0
@@ -53,15 +54,15 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 
 	private volatile long sendTimeout = -1;
 
-	private MessageHeaderInitializer headerInitializer;
+	private @Nullable MessageHeaderInitializer headerInitializer;
 
 
 	/**
 	 * Create a new {@link SimpMessagingTemplate} instance.
-	 * @param messageChannel the message channel (must not be {@code null})
+	 * @param messageChannel the message channel (never {@code null})
 	 */
 	public SimpMessagingTemplate(MessageChannel messageChannel) {
-		Assert.notNull(messageChannel, "'messageChannel' must not be null");
+		Assert.notNull(messageChannel, "MessageChannel must not be null");
 		this.messageChannel = messageChannel;
 	}
 
@@ -79,8 +80,8 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 	 * @see org.springframework.messaging.simp.user.UserDestinationMessageHandler
 	 */
 	public void setUserDestinationPrefix(String prefix) {
-		Assert.hasText(prefix, "'destinationPrefix' must not be empty");
-		this.destinationPrefix = prefix.endsWith("/") ? prefix : prefix + "/";
+		Assert.hasText(prefix, "User destination prefix must not be empty");
+		this.destinationPrefix = (prefix.endsWith("/") ? prefix : prefix + "/");
 
 	}
 
@@ -110,14 +111,14 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 	 * messages created through the {@code SimpMessagingTemplate}.
 	 * <p>By default, this property is not set.
 	 */
-	public void setHeaderInitializer(MessageHeaderInitializer headerInitializer) {
+	public void setHeaderInitializer(@Nullable MessageHeaderInitializer headerInitializer) {
 		this.headerInitializer = headerInitializer;
 	}
 
 	/**
 	 * Return the configured header initializer.
 	 */
-	public MessageHeaderInitializer getHeaderInitializer() {
+	public @Nullable MessageHeaderInitializer getHeaderInitializer() {
 		return this.headerInitializer;
 	}
 
@@ -128,14 +129,14 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 	 * SimpMessageHeaderAccessor#DESTINATION_HEADER} then the message is sent without
 	 * further changes.
 	 * <p>If a destination header is not already present ,the message is sent
-	 * to the configured {@link #setDefaultDestination(Object) defaultDestination}
-	 * or an exception an {@code IllegalStateException} is raised if that isn't
+	 * to the configured {@link AbstractMessageSendingTemplate#setDefaultDestination(Object)
+	 * defaultDestination} or an {@code IllegalStateException} is raised if that isn't
 	 * configured.
 	 * @param message the message to send (never {@code null})
 	 */
 	@Override
 	public void send(Message<?> message) {
-		Assert.notNull(message, "'message' is required");
+		Assert.notNull(message, "Message must not be null");
 		String destination = SimpMessageHeaderAccessor.getDestination(message.getHeaders());
 		if (destination != null) {
 			sendInternal(message);
@@ -155,7 +156,7 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 			if (simpAccessor.isMutable()) {
 				simpAccessor.setDestination(destination);
 				simpAccessor.setMessageTypeIfNotSet(SimpMessageType.MESSAGE);
-				simpAccessor.setImmutable();
+				// ImmutableMessageChannelInterceptor will make it immutable
 				sendInternal(message);
 				return;
 			}
@@ -178,7 +179,7 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 
 	private void sendInternal(Message<?> message) {
 		String destination = SimpMessageHeaderAccessor.getDestination(message.getHeaders());
-		Assert.notNull(destination);
+		Assert.notNull(destination, "Destination header required");
 
 		long timeout = this.sendTimeout;
 		boolean sent = (timeout >= 0 ? this.messageChannel.send(message, timeout) : this.messageChannel.send(message));
@@ -203,42 +204,45 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 
 	@Override
 	public void convertAndSendToUser(String user, String destination, Object payload,
-			Map<String, Object> headers) throws MessagingException {
+			@Nullable Map<String, Object> headers) throws MessagingException {
 
 		convertAndSendToUser(user, destination, payload, headers, null);
 	}
 
 	@Override
 	public void convertAndSendToUser(String user, String destination, Object payload,
-			MessagePostProcessor postProcessor) throws MessagingException {
+			@Nullable MessagePostProcessor postProcessor) throws MessagingException {
 
 		convertAndSendToUser(user, destination, payload, null, postProcessor);
 	}
 
 	@Override
-	public void convertAndSendToUser(String user, String destination, Object payload, Map<String, Object> headers,
-			MessagePostProcessor postProcessor) throws MessagingException {
+	public void convertAndSendToUser(String user, String destination, Object payload,
+			@Nullable Map<String, Object> headers, @Nullable MessagePostProcessor postProcessor)
+			throws MessagingException {
 
 		Assert.notNull(user, "User must not be null");
+		String username = user;
+		Assert.isTrue(!user.contains("%2F"), () -> "Invalid sequence \"%2F\" in user name: " + username);
 		user = StringUtils.replace(user, "/", "%2F");
+		destination = destination.startsWith("/") ? destination : "/" + destination;
 		super.convertAndSend(this.destinationPrefix + user + destination, payload, headers, postProcessor);
 	}
 
 
 	/**
 	 * Creates a new map and puts the given headers under the key
-	 * {@link org.springframework.messaging.support.NativeMessageHeaderAccessor#NATIVE_HEADERS NATIVE_HEADERS NATIVE_HEADERS NATIVE_HEADERS}.
-	 * effectively treats the input header map as headers to be sent out to the
+	 * {@link NativeMessageHeaderAccessor#NATIVE_HEADERS NATIVE_HEADERS}.
+	 * <p>Effectively treats the input header map as headers to be sent out to the
 	 * destination.
-	 * <p>However if the given headers already contain the key
-	 * {@code NATIVE_HEADERS NATIVE_HEADERS} then the same headers instance is
-	 * returned without changes.
+	 * <p>However if the given headers already contain the key {@code NATIVE_HEADERS}
+	 * then the same headers instance is returned without changes.
 	 * <p>Also if the given headers were prepared and obtained with
 	 * {@link SimpMessageHeaderAccessor#getMessageHeaders()} then the same headers
 	 * instance is also returned without changes.
 	 */
 	@Override
-	protected Map<String, Object> processHeadersToSend(Map<String, Object> headers) {
+	protected Map<String, Object> processHeadersToSend(@Nullable Map<String, Object> headers) {
 		if (headers == null) {
 			SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
 			initHeaders(headerAccessor);
@@ -248,9 +252,9 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 		if (headers.containsKey(NativeMessageHeaderAccessor.NATIVE_HEADERS)) {
 			return headers;
 		}
-		if (headers instanceof MessageHeaders) {
+		if (headers instanceof MessageHeaders messageHeaders) {
 			SimpMessageHeaderAccessor accessor =
-					MessageHeaderAccessor.getAccessor((MessageHeaders) headers, SimpMessageHeaderAccessor.class);
+					MessageHeaderAccessor.getAccessor(messageHeaders, SimpMessageHeaderAccessor.class);
 			if (accessor != null) {
 				return headers;
 			}
@@ -258,10 +262,7 @@ public class SimpMessagingTemplate extends AbstractMessageSendingTemplate<String
 
 		SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
 		initHeaders(headerAccessor);
-		for (String key : headers.keySet()) {
-			Object value = headers.get(key);
-			headerAccessor.setNativeHeader(key, (value != null ? value.toString() : null));
-		}
+		headers.forEach((key, value) -> headerAccessor.setNativeHeader(key, (value != null ? value.toString() : null)));
 		return headerAccessor.getMessageHeaders();
 	}
 

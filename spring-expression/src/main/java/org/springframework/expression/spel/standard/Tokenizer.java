@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,32 +19,39 @@ package org.springframework.expression.spel.standard;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.expression.spel.InternalParseException;
 import org.springframework.expression.spel.SpelMessage;
 import org.springframework.expression.spel.SpelParseException;
-import org.springframework.util.Assert;
 
 /**
  * Lex some input data into a stream of tokens that can then be parsed.
  *
  * @author Andy Clement
+ * @author Juergen Hoeller
  * @author Phillip Webb
+ * @author Sam Brannen
  * @since 3.0
  */
 class Tokenizer {
 
-	// if this is changed, it must remain sorted
-	private static final String[] ALTERNATIVE_OPERATOR_NAMES = { "DIV", "EQ", "GE", "GT",
-		"LE", "LT", "MOD", "NE", "NOT" };
+	/**
+	 * Alternative textual operator names which must match enum constant names
+	 * in {@link TokenKind}.
+	 * <p>Note that {@code AND} and {@code OR} are also alternative textual
+	 * names, but they are handled later in {@link InternalSpelExpressionParser}.
+	 * <p>If this list gets changed, it must remain sorted since we use it with
+	 * {@link Arrays#binarySearch(Object[], Object)}.
+	 */
+	private static final String[] ALTERNATIVE_OPERATOR_NAMES =
+			{"DIV", "EQ", "GE", "GT", "LE", "LT", "MOD", "NE", "NOT"};
 
-	private static final byte FLAGS[] = new byte[256];
+	private static final byte[] FLAGS = new byte[256];
 
 	private static final byte IS_DIGIT = 0x01;
 
 	private static final byte IS_HEXDIGIT = 0x02;
-
-	private static final byte IS_ALPHA = 0x04;
 
 	static {
 		for (int ch = '0'; ch <= '9'; ch++) {
@@ -56,38 +63,31 @@ class Tokenizer {
 		for (int ch = 'a'; ch <= 'f'; ch++) {
 			FLAGS[ch] |= IS_HEXDIGIT;
 		}
-		for (int ch = 'A'; ch <= 'Z'; ch++) {
-			FLAGS[ch] |= IS_ALPHA;
-		}
-		for (int ch = 'a'; ch <= 'z'; ch++) {
-			FLAGS[ch] |= IS_ALPHA;
-		}
 	}
 
 
-	String expressionString;
+	private final String expressionString;
 
-	char[] toProcess;
+	private final char[] charsToProcess;
 
-	int pos;
+	private int pos;
 
-	int max;
+	private final int max;
 
-	List<Token> tokens = new ArrayList<Token>();
+	private final List<Token> tokens = new ArrayList<>();
 
 
 	public Tokenizer(String inputData) {
 		this.expressionString = inputData;
-		this.toProcess = (inputData + "\0").toCharArray();
-		this.max = this.toProcess.length;
+		this.charsToProcess = (inputData + "\0").toCharArray();
+		this.max = this.charsToProcess.length;
 		this.pos = 0;
-		process();
 	}
 
 
-	public void process() {
+	public List<Token> process() {
 		while (this.pos < this.max) {
-			char ch = this.toProcess[this.pos];
+			char ch = this.charsToProcess[this.pos];
 			if (isAlphabetic(ch)) {
 				lexIdentifier();
 			}
@@ -101,8 +101,8 @@ class Tokenizer {
 							pushCharToken(TokenKind.PLUS);
 						}
 						break;
-					case '_': // the other way to start an identifier
-						lexIdentifier();
+					case '_':
+						lexIdentifier();  // '_' is another way to start an identifier
 						break;
 					case '-':
 						if (isTwoCharToken(TokenKind.DEC)) {
@@ -191,9 +191,7 @@ class Tokenizer {
 						break;
 					case '|':
 						if (!isTwoCharToken(TokenKind.SYMBOLIC_OR)) {
-							throw new InternalParseException(new SpelParseException(
-									this.expressionString, this.pos, SpelMessage.MISSING_CHARACTER,
-									"|"));
+							raiseParseException(this.pos, SpelMessage.MISSING_CHARACTER, "|");
 						}
 						pushPairToken(TokenKind.SYMBOLIC_OR);
 						break;
@@ -216,7 +214,7 @@ class Tokenizer {
 							pushPairToken(TokenKind.SELECT_LAST);
 						}
 						else {
-							lexIdentifier();
+							lexIdentifier();  // '$' is another way to start an identifier
 						}
 						break;
 					case '>':
@@ -262,21 +260,19 @@ class Tokenizer {
 						break;
 					case 0:
 						// hit sentinel at end of value
-						this.pos++; // will take us to the end
+						this.pos++;  // will take us to the end
 						break;
 					case '\\':
-						throw new InternalParseException(
-								new SpelParseException(this.expressionString, this.pos, SpelMessage.UNEXPECTED_ESCAPE_CHAR));
+						raiseParseException(this.pos, SpelMessage.UNEXPECTED_ESCAPE_CHAR);
+						break;
 					default:
-						throw new IllegalStateException("Cannot handle (" + Integer.valueOf(ch) + ") '" + ch + "'");
+						raiseParseException(this.pos + 1, SpelMessage.UNSUPPORTED_CHARACTER, ch, (int) ch);
 				}
 			}
 		}
-	}
-
-	public List<Token> getTokens() {
 		return this.tokens;
 	}
+
 
 	// STRING_LITERAL: '\''! (APOS|~'\'')* '\''!;
 	private void lexQuotedStringLiteral() {
@@ -284,19 +280,18 @@ class Tokenizer {
 		boolean terminated = false;
 		while (!terminated) {
 			this.pos++;
-			char ch = this.toProcess[this.pos];
+			char ch = this.charsToProcess[this.pos];
 			if (ch == '\'') {
 				// may not be the end if the char after is also a '
-				if (this.toProcess[this.pos + 1] == '\'') {
-					this.pos++; // skip over that too, and continue
+				if (this.charsToProcess[this.pos + 1] == '\'') {
+					this.pos++;  // skip over that too, and continue
 				}
 				else {
 					terminated = true;
 				}
 			}
-			if (ch == 0) {
-				throw new InternalParseException(new SpelParseException(this.expressionString, start,
-						SpelMessage.NON_TERMINATING_QUOTED_STRING));
+			if (isExhausted()) {
+				raiseParseException(start, SpelMessage.NON_TERMINATING_QUOTED_STRING);
 			}
 		}
 		this.pos++;
@@ -309,19 +304,18 @@ class Tokenizer {
 		boolean terminated = false;
 		while (!terminated) {
 			this.pos++;
-			char ch = this.toProcess[this.pos];
+			char ch = this.charsToProcess[this.pos];
 			if (ch == '"') {
 				// may not be the end if the char after is also a "
-				if (this.toProcess[this.pos + 1] == '"') {
-					this.pos++; // skip over that too, and continue
+				if (this.charsToProcess[this.pos + 1] == '"') {
+					this.pos++;  // skip over that too, and continue
 				}
 				else {
 					terminated = true;
 				}
 			}
-			if (ch == 0) {
-				throw new InternalParseException(new SpelParseException(this.expressionString,
-						start, SpelMessage.NON_TERMINATING_DOUBLE_QUOTED_STRING));
+			if (isExhausted()) {
+				raiseParseException(start, SpelMessage.NON_TERMINATING_DOUBLE_QUOTED_STRING);
 			}
 		}
 		this.pos++;
@@ -347,7 +341,7 @@ class Tokenizer {
 	private void lexNumericLiteral(boolean firstCharIsZero) {
 		boolean isReal = false;
 		int start = this.pos;
-		char ch = this.toProcess[this.pos + 1];
+		char ch = this.charsToProcess[this.pos + 1];
 		boolean isHex = ch == 'x' || ch == 'X';
 
 		// deal with hexadecimal
@@ -356,7 +350,7 @@ class Tokenizer {
 			do {
 				this.pos++;
 			}
-			while (isHexadecimalDigit(this.toProcess[this.pos]));
+			while (isHexadecimalDigit(this.charsToProcess[this.pos]));
 			if (isChar('L', 'l')) {
 				pushHexIntToken(subarray(start + 2, this.pos), true, start, this.pos);
 				this.pos++;
@@ -373,10 +367,10 @@ class Tokenizer {
 		do {
 			this.pos++;
 		}
-		while (isDigit(this.toProcess[this.pos]));
+		while (isDigit(this.charsToProcess[this.pos]));
 
 		// a '.' indicates this number is a real
-		ch = this.toProcess[this.pos];
+		ch = this.charsToProcess[this.pos];
 		if (ch == '.') {
 			isReal = true;
 			int dotpos = this.pos;
@@ -384,7 +378,7 @@ class Tokenizer {
 			do {
 				this.pos++;
 			}
-			while (isDigit(this.toProcess[this.pos]));
+			while (isDigit(this.charsToProcess[this.pos]));
 			if (this.pos == dotpos + 1) {
 				// the number is something like '3.'. It is really an int but may be
 				// part of something like '3.toString()'. In this case process it as
@@ -399,19 +393,18 @@ class Tokenizer {
 
 		// Now there may or may not be an exponent
 
-		// is it a long ?
+		// Is it a long ?
 		if (isChar('L', 'l')) {
-			if (isReal) { // 3.4L - not allowed
-				throw new InternalParseException(new SpelParseException(this.expressionString,
-						start, SpelMessage.REAL_CANNOT_BE_LONG));
+			if (isReal) {  // 3.4L - not allowed
+				raiseParseException(start, SpelMessage.REAL_CANNOT_BE_LONG);
 			}
 			pushIntToken(subarray(start, endOfNumber), true, start, endOfNumber);
 			this.pos++;
 		}
-		else if (isExponentChar(this.toProcess[this.pos])) {
-			isReal = true; // if it wasn't before, it is now
+		else if (isExponentChar(this.charsToProcess[this.pos])) {
+			isReal = true;  // if it wasn't before, it is now
 			this.pos++;
-			char possibleSign = this.toProcess[this.pos];
+			char possibleSign = this.charsToProcess[this.pos];
 			if (isSign(possibleSign)) {
 				this.pos++;
 			}
@@ -420,19 +413,19 @@ class Tokenizer {
 			do {
 				this.pos++;
 			}
-			while (isDigit(this.toProcess[this.pos]));
+			while (isDigit(this.charsToProcess[this.pos]));
 			boolean isFloat = false;
-			if (isFloatSuffix(this.toProcess[this.pos])) {
+			if (isFloatSuffix(this.charsToProcess[this.pos])) {
 				isFloat = true;
 				endOfNumber = ++this.pos;
 			}
-			else if (isDoubleSuffix(this.toProcess[this.pos])) {
+			else if (isDoubleSuffix(this.charsToProcess[this.pos])) {
 				endOfNumber = ++this.pos;
 			}
 			pushRealToken(subarray(start, this.pos), isFloat, start, this.pos);
 		}
 		else {
-			ch = this.toProcess[this.pos];
+			ch = this.charsToProcess[this.pos];
 			boolean isFloat = false;
 			if (isFloatSuffix(ch)) {
 				isReal = true;
@@ -457,13 +450,13 @@ class Tokenizer {
 		do {
 			this.pos++;
 		}
-		while (isIdentifier(this.toProcess[this.pos]));
+		while (isIdentifier(this.charsToProcess[this.pos]));
 		char[] subarray = subarray(start, this.pos);
 
 		// Check if this is the alternative (textual) representation of an operator (see
-		// alternativeOperatorNames)
-		if ((this.pos - start) == 2 || (this.pos - start) == 3) {
-			String asString = new String(subarray).toUpperCase();
+		// ALTERNATIVE_OPERATOR_NAMES).
+		if (subarray.length == 2 || subarray.length == 3) {
+			String asString = new String(subarray).toUpperCase(Locale.ROOT);
 			int idx = Arrays.binarySearch(ALTERNATIVE_OPERATOR_NAMES, asString);
 			if (idx >= 0) {
 				pushOneCharOrTwoCharToken(TokenKind.valueOf(asString), start, subarray);
@@ -485,14 +478,10 @@ class Tokenizer {
 	private void pushHexIntToken(char[] data, boolean isLong, int start, int end) {
 		if (data.length == 0) {
 			if (isLong) {
-				throw new InternalParseException(new SpelParseException(this.expressionString,
-						start, SpelMessage.NOT_A_LONG, this.expressionString.substring(start,
-								end + 1)));
+				raiseParseException(start, SpelMessage.NOT_A_LONG, this.expressionString.substring(start, end + 1));
 			}
 			else {
-				throw new InternalParseException(new SpelParseException(this.expressionString,
-						start, SpelMessage.NOT_AN_INTEGER, this.expressionString.substring(
-								start, end)));
+				raiseParseException(start, SpelMessage.NOT_AN_INTEGER, this.expressionString.substring(start, end));
 			}
 		}
 		if (isLong) {
@@ -513,18 +502,16 @@ class Tokenizer {
 	}
 
 	private char[] subarray(int start, int end) {
-		char[] result = new char[end - start];
-		System.arraycopy(this.toProcess, start, result, 0, end - start);
-		return result;
+		return Arrays.copyOfRange(this.charsToProcess, start, end);
 	}
 
 	/**
 	 * Check if this might be a two character token.
 	 */
 	private boolean isTwoCharToken(TokenKind kind) {
-		Assert.isTrue(kind.tokenChars.length == 2);
-		Assert.isTrue(this.toProcess[this.pos] == kind.tokenChars[0]);
-		return this.toProcess[this.pos + 1] == kind.tokenChars[1];
+		return (kind.tokenChars.length == 2 &&
+				this.charsToProcess[this.pos] == kind.tokenChars[0] &&
+				this.charsToProcess[this.pos + 1] == kind.tokenChars[1]);
 	}
 
 	/**
@@ -553,7 +540,7 @@ class Tokenizer {
 	}
 
 	private boolean isChar(char a, char b) {
-		char ch = this.toProcess[this.pos];
+		char ch = this.charsToProcess[this.pos];
 		return ch == a || ch == b;
 	}
 
@@ -581,10 +568,7 @@ class Tokenizer {
 	}
 
 	private boolean isAlphabetic(char ch) {
-		if (ch > 255) {
-			return false;
-		}
-		return (FLAGS[ch] & IS_ALPHA) != 0;
+		return Character.isLetter(ch);
 	}
 
 	private boolean isHexadecimalDigit(char ch) {
@@ -592,6 +576,14 @@ class Tokenizer {
 			return false;
 		}
 		return (FLAGS[ch] & IS_HEXDIGIT) != 0;
+	}
+
+	private boolean isExhausted() {
+		return (this.pos == this.max - 1);
+	}
+
+	private void raiseParseException(int start, SpelMessage msg, Object... inserts) {
+		throw new InternalParseException(new SpelParseException(this.expressionString, start, msg, inserts));
 	}
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,11 @@
 
 package org.springframework.messaging.simp.user;
 
+import java.time.Duration;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.context.ApplicationListener;
 import org.springframework.messaging.Message;
@@ -35,8 +39,7 @@ import org.springframework.util.Assert;
  * application servers and periodically broadcasts the content of the local
  * user registry.
  *
- * The aggregated information
- * is maintained in a {@link MultiServerUserRegistry}.
+ * <p>The aggregated information is maintained in a {@link MultiServerUserRegistry}.
  *
  * @author Rossen Stoyanchev
  * @since 4.2
@@ -53,17 +56,17 @@ public class UserRegistryMessageHandler implements MessageHandler, ApplicationLi
 
 	private final UserRegistryTask schedulerTask = new UserRegistryTask();
 
-	private volatile ScheduledFuture<?> scheduledFuture;
+	private volatile @Nullable ScheduledFuture<?> scheduledFuture;
 
-	private long registryExpirationPeriod = 20 * 1000;
+	private long registryExpirationPeriod = TimeUnit.SECONDS.toMillis(20);
 
 
 	/**
 	 * Constructor.
 	 * @param userRegistry the registry with local and remote user registry information
 	 * @param brokerTemplate template for broadcasting local registry information
-	 * @param broadcastDestination  the destination to broadcast to
-	 * @param scheduler
+	 * @param broadcastDestination the destination to broadcast to
+	 * @param scheduler the task scheduler to use
 	 */
 	public UserRegistryMessageHandler(MultiServerUserRegistry userRegistry,
 			SimpMessagingTemplate brokerTemplate, String broadcastDestination, TaskScheduler scheduler) {
@@ -109,12 +112,15 @@ public class UserRegistryMessageHandler implements MessageHandler, ApplicationLi
 	@Override
 	public void onApplicationEvent(BrokerAvailabilityEvent event) {
 		if (event.isBrokerAvailable()) {
-			long delay = getRegistryExpirationPeriod() / 2;
+			Duration delay = Duration.ofMillis(getRegistryExpirationPeriod() / 2);
 			this.scheduledFuture = this.scheduler.scheduleWithFixedDelay(this.schedulerTask, delay);
 		}
-		else if (this.scheduledFuture != null ){
-			this.scheduledFuture.cancel(true);
-			this.scheduledFuture = null;
+		else {
+			ScheduledFuture<?> future = this.scheduledFuture;
+			if (future != null ){
+				future.cancel(true);
+				this.scheduledFuture = null;
+			}
 		}
 	}
 

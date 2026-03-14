@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,21 +19,27 @@ package org.springframework.transaction.support;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
-import org.springframework.core.Constants;
+import org.springframework.transaction.ConfigurableTransactionManager;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.InvalidTimeoutException;
 import org.springframework.transaction.NestedTransactionNotSupportedException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.TransactionExecutionListener;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.TransactionSuspensionNotSupportedException;
 import org.springframework.transaction.UnexpectedRollbackException;
+import org.springframework.util.Assert;
 
 /**
  * Abstract base class that implements Spring's standard transaction workflow,
@@ -53,7 +59,7 @@ import org.springframework.transaction.UnexpectedRollbackException;
  * </ul>
  *
  * <p>Subclasses have to implement specific template methods for specific
- * states of a transaction, e.g.: begin, suspend, resume, commit, rollback.
+ * states of a transaction, for example: begin, suspend, resume, commit, rollback.
  * The most important of them are abstract and must be provided by a concrete
  * implementation; for the rest, defaults are provided, so overriding is optional.
  *
@@ -61,7 +67,7 @@ import org.springframework.transaction.UnexpectedRollbackException;
  * that get invoked at transaction completion time. This is mainly used internally
  * by the data access support classes for JDBC, Hibernate, JPA, etc when running
  * within a JTA transaction: They register resources that are opened within the
- * transaction for closing at transaction completion time, allowing e.g. for reuse
+ * transaction for closing at transaction completion time, allowing, for example, for reuse
  * of the same Hibernate Session within the transaction. The same mechanism can
  * also be leveraged for custom synchronization needs in an application.
  *
@@ -73,13 +79,15 @@ import org.springframework.transaction.UnexpectedRollbackException;
  * to Java serialization rules) if they need to restore any transient state.
  *
  * @author Juergen Hoeller
+ * @author Sam Brannen
  * @since 28.03.2003
  * @see #setTransactionSynchronization
  * @see TransactionSynchronizationManager
  * @see org.springframework.transaction.jta.JtaTransactionManager
  */
 @SuppressWarnings("serial")
-public abstract class AbstractPlatformTransactionManager implements PlatformTransactionManager, Serializable {
+public abstract class AbstractPlatformTransactionManager
+		implements PlatformTransactionManager, ConfigurableTransactionManager, Serializable {
 
 	/**
 	 * Always activate transaction synchronization, even for "empty" transactions
@@ -106,8 +114,15 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	public static final int SYNCHRONIZATION_NEVER = 2;
 
 
-	/** Constants instance for AbstractPlatformTransactionManager */
-	private static final Constants constants = new Constants(AbstractPlatformTransactionManager.class);
+	/**
+	 * Map of constant names to constant values for the transaction synchronization
+	 * constants defined in this class.
+	 */
+	static final Map<String, Integer> constants = Map.of(
+			"SYNCHRONIZATION_ALWAYS", SYNCHRONIZATION_ALWAYS,
+			"SYNCHRONIZATION_ON_ACTUAL_TRANSACTION", SYNCHRONIZATION_ON_ACTUAL_TRANSACTION,
+			"SYNCHRONIZATION_NEVER", SYNCHRONIZATION_NEVER
+		);
 
 
 	protected transient Log logger = LogFactory.getLog(getClass());
@@ -126,15 +141,23 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 
 	private boolean rollbackOnCommitFailure = false;
 
+	private Collection<TransactionExecutionListener> transactionExecutionListeners = new ArrayList<>();
+
 
 	/**
 	 * Set the transaction synchronization by the name of the corresponding constant
-	 * in this class, e.g. "SYNCHRONIZATION_ALWAYS".
+	 * in this class &mdash; for example, {@code "SYNCHRONIZATION_ALWAYS"}.
 	 * @param constantName name of the constant
 	 * @see #SYNCHRONIZATION_ALWAYS
+	 * @see #SYNCHRONIZATION_ON_ACTUAL_TRANSACTION
+	 * @see #SYNCHRONIZATION_NEVER
+	 * @see #setTransactionSynchronization(int)
 	 */
 	public final void setTransactionSynchronizationName(String constantName) {
-		setTransactionSynchronization(constants.asNumber(constantName).intValue());
+		Assert.hasText(constantName, "'constantName' must not be null or blank");
+		Integer transactionSynchronization = constants.get(constantName);
+		Assert.notNull(transactionSynchronization, "Only transaction synchronization constants allowed");
+		this.transactionSynchronization = transactionSynchronization;
 	}
 
 	/**
@@ -165,7 +188,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * Specify the default timeout that this transaction manager should apply
 	 * if there is no timeout specified at the transaction level, in seconds.
 	 * <p>Default is the underlying transaction infrastructure's default timeout,
-	 * e.g. typically 30 seconds in case of a JTA provider, indicated by the
+	 * for example, typically 30 seconds in case of a JTA provider, indicated by the
 	 * {@code TransactionDefinition.TIMEOUT_DEFAULT} value.
 	 * @see org.springframework.transaction.TransactionDefinition#TIMEOUT_DEFAULT
 	 */
@@ -205,8 +228,8 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	/**
 	 * Set whether existing transactions should be validated before participating
 	 * in them.
-	 * <p>When participating in an existing transaction (e.g. with
-	 * PROPAGATION_REQUIRES or PROPAGATION_SUPPORTS encountering an existing
+	 * <p>When participating in an existing transaction (for example, with
+	 * PROPAGATION_REQUIRED or PROPAGATION_SUPPORTS encountering an existing
 	 * transaction), this outer transaction's characteristics will apply even
 	 * to the inner transaction scope. Validation will detect incompatible
 	 * isolation level and read-only settings on the inner transaction definition
@@ -214,6 +237,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * <p>Default is "false", leniently ignoring inner transaction settings,
 	 * simply overriding them with the outer transaction's characteristics.
 	 * Switch this flag to "true" in order to enforce strict validation.
+	 * @since 2.5.1
 	 */
 	public final void setValidateExistingTransaction(boolean validateExistingTransaction) {
 		this.validateExistingTransaction = validateExistingTransaction;
@@ -222,6 +246,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	/**
 	 * Return whether existing transactions should be validated before participating
 	 * in them.
+	 * @since 2.5.1
 	 */
 	public final boolean isValidateExistingTransaction() {
 		return this.validateExistingTransaction;
@@ -230,8 +255,8 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	/**
 	 * Set whether to globally mark an existing transaction as rollback-only
 	 * after a participating transaction failed.
-	 * <p>Default is "true": If a participating transaction (e.g. with
-	 * PROPAGATION_REQUIRES or PROPAGATION_SUPPORTS encountering an existing
+	 * <p>Default is "true": If a participating transaction (for example, with
+	 * PROPAGATION_REQUIRED or PROPAGATION_SUPPORTS encountering an existing
 	 * transaction) fails, the transaction will be globally marked as rollback-only.
 	 * The only possible outcome of such a transaction is a rollback: The
 	 * transaction originator <i>cannot</i> make the transaction commit anymore.
@@ -278,12 +303,13 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * outermost transaction boundary. Switch this flag on to cause an
 	 * UnexpectedRollbackException as early as the global rollback-only marker
 	 * has been first detected, even from within an inner transaction boundary.
-	 * <p>Note that, as of Spring 2.0, the fail-early behavior for global
+	 * <p>Note that the fail-early behavior for global
 	 * rollback-only markers has been unified: All transaction managers will by
 	 * default only cause UnexpectedRollbackException at the outermost transaction
 	 * boundary. This allows, for example, to continue unit tests even after an
 	 * operation failed and the transaction will never be completed. All transaction
 	 * managers will only fail earlier if this flag has explicitly been set to "true".
+	 * @since 2.0
 	 * @see org.springframework.transaction.UnexpectedRollbackException
 	 */
 	public final void setFailEarlyOnGlobalRollbackOnly(boolean failEarlyOnGlobalRollbackOnly) {
@@ -293,6 +319,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	/**
 	 * Return whether to fail early in case of the transaction being globally marked
 	 * as rollback-only.
+	 * @since 2.0
 	 */
 	public final boolean isFailEarlyOnGlobalRollbackOnly() {
 		return this.failEarlyOnGlobalRollbackOnly;
@@ -319,6 +346,16 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		return this.rollbackOnCommitFailure;
 	}
 
+	@Override
+	public final void setTransactionExecutionListeners(Collection<TransactionExecutionListener> listeners) {
+		this.transactionExecutionListeners = listeners;
+	}
+
+	@Override
+	public final Collection<TransactionExecutionListener> getTransactionExecutionListeners() {
+		return this.transactionExecutionListeners;
+	}
+
 
 	//---------------------------------------------------------------------
 	// Implementation of PlatformTransactionManager
@@ -333,64 +370,53 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * @see #doBegin
 	 */
 	@Override
-	public final TransactionStatus getTransaction(TransactionDefinition definition) throws TransactionException {
+	public final TransactionStatus getTransaction(@Nullable TransactionDefinition definition)
+			throws TransactionException {
+
+		// Use defaults if no transaction definition given.
+		TransactionDefinition def = (definition != null ? definition : TransactionDefinition.withDefaults());
+
 		Object transaction = doGetTransaction();
-
-		// Cache debug flag to avoid repeated checks.
 		boolean debugEnabled = logger.isDebugEnabled();
-
-		if (definition == null) {
-			// Use defaults if no transaction definition given.
-			definition = new DefaultTransactionDefinition();
-		}
 
 		if (isExistingTransaction(transaction)) {
 			// Existing transaction found -> check propagation behavior to find out how to behave.
-			return handleExistingTransaction(definition, transaction, debugEnabled);
+			return handleExistingTransaction(def, transaction, debugEnabled);
 		}
 
 		// Check definition settings for new transaction.
-		if (definition.getTimeout() < TransactionDefinition.TIMEOUT_DEFAULT) {
-			throw new InvalidTimeoutException("Invalid transaction timeout", definition.getTimeout());
+		if (def.getTimeout() < TransactionDefinition.TIMEOUT_DEFAULT) {
+			throw new InvalidTimeoutException("Invalid transaction timeout", def.getTimeout());
 		}
 
 		// No existing transaction found -> check propagation behavior to find out how to proceed.
-		if (definition.getPropagationBehavior() == TransactionDefinition.PROPAGATION_MANDATORY) {
+		if (def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_MANDATORY) {
 			throw new IllegalTransactionStateException(
 					"No existing transaction found for transaction marked with propagation 'mandatory'");
 		}
-		else if (definition.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRED ||
-				definition.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRES_NEW ||
-				definition.getPropagationBehavior() == TransactionDefinition.PROPAGATION_NESTED) {
+		else if (def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRED ||
+				def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRES_NEW ||
+				def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_NESTED) {
 			SuspendedResourcesHolder suspendedResources = suspend(null);
 			if (debugEnabled) {
-				logger.debug("Creating new transaction with name [" + definition.getName() + "]: " + definition);
+				logger.debug("Creating new transaction with name [" + def.getName() + "]: " + def);
 			}
 			try {
-				boolean newSynchronization = (getTransactionSynchronization() != SYNCHRONIZATION_NEVER);
-				DefaultTransactionStatus status = newTransactionStatus(
-						definition, transaction, true, newSynchronization, debugEnabled, suspendedResources);
-				doBegin(transaction, definition);
-				prepareSynchronization(status, definition);
-				return status;
+				return startTransaction(def, transaction, false, debugEnabled, suspendedResources);
 			}
-			catch (RuntimeException ex) {
+			catch (RuntimeException | Error ex) {
 				resume(null, suspendedResources);
 				throw ex;
-			}
-			catch (Error err) {
-				resume(null, suspendedResources);
-				throw err;
 			}
 		}
 		else {
 			// Create "empty" transaction: no actual transaction, but potentially synchronization.
-			if (definition.getIsolationLevel() != TransactionDefinition.ISOLATION_DEFAULT && logger.isWarnEnabled()) {
+			if (def.getIsolationLevel() != TransactionDefinition.ISOLATION_DEFAULT && logger.isWarnEnabled()) {
 				logger.warn("Custom isolation level specified but no actual transaction initiated; " +
-						"isolation level will effectively be ignored: " + definition);
+						"isolation level will effectively be ignored: " + def);
 			}
 			boolean newSynchronization = (getTransactionSynchronization() == SYNCHRONIZATION_ALWAYS);
-			return prepareTransactionStatus(definition, null, true, newSynchronization, debugEnabled, null);
+			return prepareTransactionStatus(def, null, true, newSynchronization, debugEnabled, null);
 		}
 	}
 
@@ -423,20 +449,11 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			}
 			SuspendedResourcesHolder suspendedResources = suspend(transaction);
 			try {
-				boolean newSynchronization = (getTransactionSynchronization() != SYNCHRONIZATION_NEVER);
-				DefaultTransactionStatus status = newTransactionStatus(
-						definition, transaction, true, newSynchronization, debugEnabled, suspendedResources);
-				doBegin(transaction, definition);
-				prepareSynchronization(status, definition);
-				return status;
+				return startTransaction(definition, transaction, false, debugEnabled, suspendedResources);
 			}
-			catch (RuntimeException beginEx) {
+			catch (RuntimeException | Error beginEx) {
 				resumeAfterBeginException(transaction, suspendedResources, beginEx);
 				throw beginEx;
-			}
-			catch (Error beginErr) {
-				resumeAfterBeginException(transaction, suspendedResources, beginErr);
-				throw beginErr;
 			}
 		}
 
@@ -452,26 +469,30 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			if (useSavepointForNestedTransaction()) {
 				// Create savepoint within existing Spring-managed transaction,
 				// through the SavepointManager API implemented by TransactionStatus.
-				// Usually uses JDBC 3.0 savepoints. Never activates Spring synchronization.
-				DefaultTransactionStatus status =
-						prepareTransactionStatus(definition, transaction, false, false, debugEnabled, null);
-				status.createAndHoldSavepoint();
+				// Usually uses JDBC savepoints. Never activates Spring synchronization.
+				DefaultTransactionStatus status = newTransactionStatus(
+						definition, transaction, false, false, true, debugEnabled, null);
+				this.transactionExecutionListeners.forEach(listener -> listener.beforeBegin(status));
+				try {
+					status.createAndHoldSavepoint();
+				}
+				catch (RuntimeException | Error ex) {
+					this.transactionExecutionListeners.forEach(listener -> listener.afterBegin(status, ex));
+					throw ex;
+				}
+				this.transactionExecutionListeners.forEach(listener -> listener.afterBegin(status, null));
 				return status;
 			}
 			else {
 				// Nested transaction through nested begin and commit/rollback calls.
 				// Usually only for JTA: Spring synchronization might get activated here
 				// in case of a pre-existing JTA transaction.
-				boolean newSynchronization = (getTransactionSynchronization() != SYNCHRONIZATION_NEVER);
-				DefaultTransactionStatus status = newTransactionStatus(
-						definition, transaction, true, newSynchronization, debugEnabled, null);
-				doBegin(transaction, definition);
-				prepareSynchronization(status, definition);
-				return status;
+				return startTransaction(definition, transaction, true, debugEnabled, null);
 			}
 		}
 
-		// Assumably PROPAGATION_SUPPORTS or PROPAGATION_REQUIRED.
+		// PROPAGATION_REQUIRED, PROPAGATION_SUPPORTS, PROPAGATION_MANDATORY:
+		// regular participation in existing transaction.
 		if (debugEnabled) {
 			logger.debug("Participating in existing transaction");
 		}
@@ -479,11 +500,10 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			if (definition.getIsolationLevel() != TransactionDefinition.ISOLATION_DEFAULT) {
 				Integer currentIsolationLevel = TransactionSynchronizationManager.getCurrentTransactionIsolationLevel();
 				if (currentIsolationLevel == null || currentIsolationLevel != definition.getIsolationLevel()) {
-					Constants isoConstants = DefaultTransactionDefinition.constants;
 					throw new IllegalTransactionStateException("Participating transaction with definition [" +
 							definition + "] specifies isolation level which is incompatible with existing transaction: " +
 							(currentIsolationLevel != null ?
-									isoConstants.toCode(currentIsolationLevel, DefaultTransactionDefinition.PREFIX_ISOLATION) :
+									DefaultTransactionDefinition.getIsolationLevelName(currentIsolationLevel) :
 									"(unknown)"));
 				}
 			}
@@ -499,17 +519,39 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	}
 
 	/**
+	 * Start a new transaction.
+	 */
+	private TransactionStatus startTransaction(TransactionDefinition definition, Object transaction,
+			boolean nested, boolean debugEnabled, @Nullable SuspendedResourcesHolder suspendedResources) {
+
+		boolean newSynchronization = (getTransactionSynchronization() != SYNCHRONIZATION_NEVER);
+		DefaultTransactionStatus status = newTransactionStatus(
+				definition, transaction, true, newSynchronization, nested, debugEnabled, suspendedResources);
+		this.transactionExecutionListeners.forEach(listener -> listener.beforeBegin(status));
+		try {
+			doBegin(transaction, definition);
+		}
+		catch (RuntimeException | Error ex) {
+			this.transactionExecutionListeners.forEach(listener -> listener.afterBegin(status, ex));
+			throw ex;
+		}
+		prepareSynchronization(status, definition);
+		this.transactionExecutionListeners.forEach(listener -> listener.afterBegin(status, null));
+		return status;
+	}
+
+	/**
 	 * Create a new TransactionStatus for the given arguments,
 	 * also initializing transaction synchronization as appropriate.
 	 * @see #newTransactionStatus
 	 * @see #prepareTransactionStatus
 	 */
-	protected final DefaultTransactionStatus prepareTransactionStatus(
-			TransactionDefinition definition, Object transaction, boolean newTransaction,
-			boolean newSynchronization, boolean debug, Object suspendedResources) {
+	private DefaultTransactionStatus prepareTransactionStatus(
+			TransactionDefinition definition, @Nullable Object transaction, boolean newTransaction,
+			boolean newSynchronization, boolean debug, @Nullable Object suspendedResources) {
 
 		DefaultTransactionStatus status = newTransactionStatus(
-				definition, transaction, newTransaction, newSynchronization, debug, suspendedResources);
+				definition, transaction, newTransaction, newSynchronization, false, debug, suspendedResources);
 		prepareSynchronization(status, definition);
 		return status;
 	}
@@ -517,15 +559,14 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	/**
 	 * Create a TransactionStatus instance for the given arguments.
 	 */
-	protected DefaultTransactionStatus newTransactionStatus(
-			TransactionDefinition definition, Object transaction, boolean newTransaction,
-			boolean newSynchronization, boolean debug, Object suspendedResources) {
+	private DefaultTransactionStatus newTransactionStatus(
+			TransactionDefinition definition, @Nullable Object transaction, boolean newTransaction,
+			boolean newSynchronization, boolean nested, boolean debug, @Nullable Object suspendedResources) {
 
 		boolean actualNewSynchronization = newSynchronization &&
 				!TransactionSynchronizationManager.isSynchronizationActive();
-		return new DefaultTransactionStatus(
-				transaction, newTransaction, actualNewSynchronization,
-				definition.isReadOnly(), debug, suspendedResources);
+		return new DefaultTransactionStatus(definition.getName(), transaction, newTransaction,
+				actualNewSynchronization, nested, definition.isReadOnly(), debug, suspendedResources);
 	}
 
 	/**
@@ -556,7 +597,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		if (definition.getTimeout() != TransactionDefinition.TIMEOUT_DEFAULT) {
 			return definition.getTimeout();
 		}
-		return this.defaultTimeout;
+		return getDefaultTimeout();
 	}
 
 
@@ -570,7 +611,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * @see #doSuspend
 	 * @see #resume
 	 */
-	protected final SuspendedResourcesHolder suspend(Object transaction) throws TransactionException {
+	protected final @Nullable SuspendedResourcesHolder suspend(@Nullable Object transaction) throws TransactionException {
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			List<TransactionSynchronization> suspendedSynchronizations = doSuspendSynchronization();
 			try {
@@ -589,15 +630,10 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				return new SuspendedResourcesHolder(
 						suspendedResources, suspendedSynchronizations, name, readOnly, isolationLevel, wasActive);
 			}
-			catch (RuntimeException ex) {
+			catch (RuntimeException | Error ex) {
 				// doSuspend failed - original transaction is still active...
 				doResumeSynchronization(suspendedSynchronizations);
 				throw ex;
-			}
-			catch (Error err) {
-				// doSuspend failed - original transaction is still active...
-				doResumeSynchronization(suspendedSynchronizations);
-				throw err;
 			}
 		}
 		else if (transaction != null) {
@@ -621,7 +657,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * @see #doResume
 	 * @see #suspend
 	 */
-	protected final void resume(Object transaction, SuspendedResourcesHolder resourcesHolder)
+	protected final void resume(@Nullable Object transaction, @Nullable SuspendedResourcesHolder resourcesHolder)
 			throws TransactionException {
 
 		if (resourcesHolder != null) {
@@ -644,19 +680,15 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * Resume outer transaction after inner transaction begin failed.
 	 */
 	private void resumeAfterBeginException(
-			Object transaction, SuspendedResourcesHolder suspendedResources, Throwable beginEx) {
+			Object transaction, @Nullable SuspendedResourcesHolder suspendedResources, Throwable beginEx) {
 
-		String exMessage = "Inner transaction begin exception overridden by outer transaction resume exception";
 		try {
 			resume(transaction, suspendedResources);
 		}
-		catch (RuntimeException resumeEx) {
+		catch (RuntimeException | Error resumeEx) {
+			String exMessage = "Inner transaction begin exception overridden by outer transaction resume exception";
 			logger.error(exMessage, beginEx);
 			throw resumeEx;
-		}
-		catch (Error resumeErr) {
-			logger.error(exMessage, beginEx);
-			throw resumeErr;
 		}
 	}
 
@@ -678,7 +710,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	/**
 	 * Reactivate transaction synchronization for the current thread
 	 * and resume all given synchronizations.
-	 * @param suspendedSynchronizations List of TransactionSynchronization objects
+	 * @param suspendedSynchronizations a List of TransactionSynchronization objects
 	 */
 	private void doResumeSynchronization(List<TransactionSynchronization> suspendedSynchronizations) {
 		TransactionSynchronizationManager.initSynchronization();
@@ -710,20 +742,15 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			if (defStatus.isDebug()) {
 				logger.debug("Transactional code has requested rollback");
 			}
-			processRollback(defStatus);
+			processRollback(defStatus, false);
 			return;
 		}
+
 		if (!shouldCommitOnGlobalRollbackOnly() && defStatus.isGlobalRollbackOnly()) {
 			if (defStatus.isDebug()) {
 				logger.debug("Global transaction is marked as rollback-only but transactional code requested commit");
 			}
-			processRollback(defStatus);
-			// Throw UnexpectedRollbackException only at outermost transaction boundary
-			// or if explicitly asked to.
-			if (status.isNewTransaction() || isFailEarlyOnGlobalRollbackOnly()) {
-				throw new UnexpectedRollbackException(
-						"Transaction rolled back because it has been marked as rollback-only");
-			}
+			processRollback(defStatus, true);
 			return;
 		}
 
@@ -739,62 +766,67 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	private void processCommit(DefaultTransactionStatus status) throws TransactionException {
 		try {
 			boolean beforeCompletionInvoked = false;
+			boolean commitListenerInvoked = false;
+
 			try {
+				boolean unexpectedRollback = false;
 				prepareForCommit(status);
 				triggerBeforeCommit(status);
 				triggerBeforeCompletion(status);
 				beforeCompletionInvoked = true;
-				boolean globalRollbackOnly = false;
-				if (status.isNewTransaction() || isFailEarlyOnGlobalRollbackOnly()) {
-					globalRollbackOnly = status.isGlobalRollbackOnly();
-				}
+
 				if (status.hasSavepoint()) {
 					if (status.isDebug()) {
 						logger.debug("Releasing transaction savepoint");
 					}
+					unexpectedRollback = status.isGlobalRollbackOnly();
+					this.transactionExecutionListeners.forEach(listener -> listener.beforeCommit(status));
+					commitListenerInvoked = true;
 					status.releaseHeldSavepoint();
 				}
 				else if (status.isNewTransaction()) {
 					if (status.isDebug()) {
 						logger.debug("Initiating transaction commit");
 					}
+					unexpectedRollback = status.isGlobalRollbackOnly();
+					this.transactionExecutionListeners.forEach(listener -> listener.beforeCommit(status));
+					commitListenerInvoked = true;
 					doCommit(status);
 				}
+				else if (isFailEarlyOnGlobalRollbackOnly()) {
+					unexpectedRollback = status.isGlobalRollbackOnly();
+				}
+
 				// Throw UnexpectedRollbackException if we have a global rollback-only
 				// marker but still didn't get a corresponding exception from commit.
-				if (globalRollbackOnly) {
+				if (unexpectedRollback) {
 					throw new UnexpectedRollbackException(
 							"Transaction silently rolled back because it has been marked as rollback-only");
 				}
 			}
 			catch (UnexpectedRollbackException ex) {
-				// can only be caused by doCommit
 				triggerAfterCompletion(status, TransactionSynchronization.STATUS_ROLLED_BACK);
+				this.transactionExecutionListeners.forEach(listener -> listener.afterRollback(status, null));
 				throw ex;
 			}
 			catch (TransactionException ex) {
-				// can only be caused by doCommit
 				if (isRollbackOnCommitFailure()) {
 					doRollbackOnCommitException(status, ex);
 				}
 				else {
 					triggerAfterCompletion(status, TransactionSynchronization.STATUS_UNKNOWN);
+					if (commitListenerInvoked) {
+						this.transactionExecutionListeners.forEach(listener -> listener.afterCommit(status, ex));
+					}
 				}
 				throw ex;
 			}
-			catch (RuntimeException ex) {
+			catch (RuntimeException | Error ex) {
 				if (!beforeCompletionInvoked) {
 					triggerBeforeCompletion(status);
 				}
 				doRollbackOnCommitException(status, ex);
 				throw ex;
-			}
-			catch (Error err) {
-				if (!beforeCompletionInvoked) {
-					triggerBeforeCompletion(status);
-				}
-				doRollbackOnCommitException(status, err);
-				throw err;
 			}
 
 			// Trigger afterCommit callbacks, with an exception thrown there
@@ -804,6 +836,9 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			}
 			finally {
 				triggerAfterCompletion(status, TransactionSynchronization.STATUS_COMMITTED);
+				if (commitListenerInvoked) {
+					this.transactionExecutionListeners.forEach(listener -> listener.afterCommit(status, null));
+				}
 			}
 
 		}
@@ -827,7 +862,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		}
 
 		DefaultTransactionStatus defStatus = (DefaultTransactionStatus) status;
-		processRollback(defStatus);
+		processRollback(defStatus, false);
 	}
 
 	/**
@@ -836,48 +871,72 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * @param status object representing the transaction
 	 * @throws TransactionException in case of rollback failure
 	 */
-	private void processRollback(DefaultTransactionStatus status) {
+	private void processRollback(DefaultTransactionStatus status, boolean unexpected) {
 		try {
+			boolean unexpectedRollback = unexpected;
+			boolean rollbackListenerInvoked = false;
+
 			try {
 				triggerBeforeCompletion(status);
+
 				if (status.hasSavepoint()) {
 					if (status.isDebug()) {
 						logger.debug("Rolling back transaction to savepoint");
 					}
+					this.transactionExecutionListeners.forEach(listener -> listener.beforeRollback(status));
+					rollbackListenerInvoked = true;
 					status.rollbackToHeldSavepoint();
 				}
 				else if (status.isNewTransaction()) {
 					if (status.isDebug()) {
 						logger.debug("Initiating transaction rollback");
 					}
+					this.transactionExecutionListeners.forEach(listener -> listener.beforeRollback(status));
+					rollbackListenerInvoked = true;
 					doRollback(status);
 				}
-				else if (status.hasTransaction()) {
-					if (status.isLocalRollbackOnly() || isGlobalRollbackOnParticipationFailure()) {
-						if (status.isDebug()) {
-							logger.debug("Participating transaction failed - marking existing transaction as rollback-only");
+				else {
+					// Participating in larger transaction
+					if (status.hasTransaction()) {
+						if (status.isLocalRollbackOnly() || isGlobalRollbackOnParticipationFailure()) {
+							if (status.isDebug()) {
+								logger.debug("Participating transaction failed - marking existing transaction as rollback-only");
+							}
+							doSetRollbackOnly(status);
 						}
-						doSetRollbackOnly(status);
+						else {
+							if (status.isDebug()) {
+								logger.debug("Participating transaction failed - letting transaction originator decide on rollback");
+							}
+						}
 					}
 					else {
-						if (status.isDebug()) {
-							logger.debug("Participating transaction failed - letting transaction originator decide on rollback");
-						}
+						logger.debug("Should roll back transaction but cannot - no transaction available");
+					}
+					// Unexpected rollback only matters here if we're asked to fail early
+					if (!isFailEarlyOnGlobalRollbackOnly()) {
+						unexpectedRollback = false;
 					}
 				}
-				else {
-					logger.debug("Should roll back transaction but cannot - no transaction available");
-				}
 			}
-			catch (RuntimeException ex) {
+			catch (RuntimeException | Error ex) {
 				triggerAfterCompletion(status, TransactionSynchronization.STATUS_UNKNOWN);
+				if (rollbackListenerInvoked) {
+					this.transactionExecutionListeners.forEach(listener -> listener.afterRollback(status, ex));
+				}
 				throw ex;
 			}
-			catch (Error err) {
-				triggerAfterCompletion(status, TransactionSynchronization.STATUS_UNKNOWN);
-				throw err;
-			}
+
 			triggerAfterCompletion(status, TransactionSynchronization.STATUS_ROLLED_BACK);
+			if (rollbackListenerInvoked) {
+				this.transactionExecutionListeners.forEach(listener -> listener.afterRollback(status, null));
+			}
+
+			// Raise UnexpectedRollbackException if we had a global rollback-only marker
+			if (unexpectedRollback) {
+				throw new UnexpectedRollbackException(
+						"Transaction rolled back because it has been marked as rollback-only");
+			}
 		}
 		finally {
 			cleanupAfterCompletion(status);
@@ -906,17 +965,14 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				doSetRollbackOnly(status);
 			}
 		}
-		catch (RuntimeException rbex) {
+		catch (RuntimeException | Error rbex) {
 			logger.error("Commit exception overridden by rollback exception", ex);
 			triggerAfterCompletion(status, TransactionSynchronization.STATUS_UNKNOWN);
+			this.transactionExecutionListeners.forEach(listener -> listener.afterRollback(status, rbex));
 			throw rbex;
 		}
-		catch (Error rberr) {
-			logger.error("Commit exception overridden by rollback exception", ex);
-			triggerAfterCompletion(status, TransactionSynchronization.STATUS_UNKNOWN);
-			throw rberr;
-		}
 		triggerAfterCompletion(status, TransactionSynchronization.STATUS_ROLLED_BACK);
+		this.transactionExecutionListeners.forEach(listener -> listener.afterRollback(status, null));
 	}
 
 
@@ -926,9 +982,6 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 */
 	protected final void triggerBeforeCommit(DefaultTransactionStatus status) {
 		if (status.isNewSynchronization()) {
-			if (status.isDebug()) {
-				logger.trace("Triggering beforeCommit synchronization");
-			}
 			TransactionSynchronizationUtils.triggerBeforeCommit(status.isReadOnly());
 		}
 	}
@@ -939,9 +992,6 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 */
 	protected final void triggerBeforeCompletion(DefaultTransactionStatus status) {
 		if (status.isNewSynchronization()) {
-			if (status.isDebug()) {
-				logger.trace("Triggering beforeCompletion synchronization");
-			}
 			TransactionSynchronizationUtils.triggerBeforeCompletion();
 		}
 	}
@@ -952,9 +1002,6 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 */
 	private void triggerAfterCommit(DefaultTransactionStatus status) {
 		if (status.isNewSynchronization()) {
-			if (status.isDebug()) {
-				logger.trace("Triggering afterCommit synchronization");
-			}
 			TransactionSynchronizationUtils.triggerAfterCommit();
 		}
 	}
@@ -967,17 +1014,15 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	private void triggerAfterCompletion(DefaultTransactionStatus status, int completionStatus) {
 		if (status.isNewSynchronization()) {
 			List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
+			TransactionSynchronizationManager.clearSynchronization();
 			if (!status.hasTransaction() || status.isNewTransaction()) {
-				if (status.isDebug()) {
-					logger.trace("Triggering afterCompletion synchronization");
-				}
 				// No transaction or new transaction for the current scope ->
 				// invoke the afterCompletion callbacks immediately
 				invokeAfterCompletion(synchronizations, completionStatus);
 			}
 			else if (!synchronizations.isEmpty()) {
 				// Existing transaction that we participate in, controlled outside
-				// of the scope of this Spring transaction manager -> try to register
+				// the scope of this Spring transaction manager -> try to register
 				// an afterCompletion callback with the existing (JTA) transaction.
 				registerAfterCompletionWithExistingTransaction(status.getTransaction(), synchronizations);
 			}
@@ -989,7 +1034,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * given Spring TransactionSynchronization objects.
 	 * <p>To be called by this abstract manager itself, or by special implementations
 	 * of the {@code registerAfterCompletionWithExistingTransaction} callback.
-	 * @param synchronizations List of TransactionSynchronization objects
+	 * @param synchronizations a List of TransactionSynchronization objects
 	 * @param completionStatus the completion status according to the
 	 * constants in the TransactionSynchronization interface
 	 * @see #registerAfterCompletionWithExistingTransaction(Object, java.util.List)
@@ -1019,7 +1064,8 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			if (status.isDebug()) {
 				logger.debug("Resuming suspended transaction after completion of inner transaction");
 			}
-			resume(status.getTransaction(), (SuspendedResourcesHolder) status.getSuspendedResources());
+			Object transaction = (status.hasTransaction() ? status.getTransaction() : null);
+			resume(transaction, (SuspendedResourcesHolder) status.getSuspendedResources());
 		}
 	}
 
@@ -1033,7 +1079,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * <p>The returned object will usually be specific to the concrete transaction
 	 * manager implementation, carrying corresponding transaction state in a
 	 * modifiable fashion. This object will be passed into the other template
-	 * methods (e.g. doBegin and doCommit), either directly or as part of a
+	 * methods (for example, doBegin and doCommit), either directly or as part of a
 	 * DefaultTransactionStatus instance.
 	 * <p>The returned object should contain information about any existing
 	 * transaction, that is, a transaction that has already started before the
@@ -1062,7 +1108,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * <p>The default implementation returns {@code false}, assuming that
 	 * participating in existing transactions is generally not supported.
 	 * Subclasses are of course encouraged to provide such support.
-	 * @param transaction transaction object returned by doGetTransaction
+	 * @param transaction the transaction object returned by doGetTransaction
 	 * @return if there is an existing transaction
 	 * @throws TransactionException in case of system errors
 	 * @see #doGetTransaction
@@ -1103,10 +1149,12 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * will be called to start a nested transaction when necessary. In such a context,
 	 * there will be an active transaction: The implementation of this method has
 	 * to detect this and start an appropriate nested transaction.
-	 * @param transaction transaction object returned by {@code doGetTransaction}
-	 * @param definition TransactionDefinition instance, describing propagation
+	 * @param transaction the transaction object returned by {@code doGetTransaction}
+	 * @param definition a TransactionDefinition instance, describing propagation
 	 * behavior, isolation level, read-only flag, timeout, and transaction name
 	 * @throws TransactionException in case of creation or system errors
+	 * @throws org.springframework.transaction.NestedTransactionNotSupportedException
+	 * if the underlying transaction does not support nesting
 	 */
 	protected abstract void doBegin(Object transaction, TransactionDefinition definition)
 			throws TransactionException;
@@ -1116,7 +1164,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * Transaction synchronization will already have been suspended.
 	 * <p>The default implementation throws a TransactionSuspensionNotSupportedException,
 	 * assuming that transaction suspension is generally not supported.
-	 * @param transaction transaction object returned by {@code doGetTransaction}
+	 * @param transaction the transaction object returned by {@code doGetTransaction}
 	 * @return an object that holds suspended resources
 	 * (will be kept unexamined for passing it into doResume)
 	 * @throws org.springframework.transaction.TransactionSuspensionNotSupportedException
@@ -1134,7 +1182,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * Transaction synchronization will be resumed afterwards.
 	 * <p>The default implementation throws a TransactionSuspensionNotSupportedException,
 	 * assuming that transaction suspension is generally not supported.
-	 * @param transaction transaction object returned by {@code doGetTransaction}
+	 * @param transaction the transaction object returned by {@code doGetTransaction}
 	 * @param suspendedResources the object that holds suspended resources,
 	 * as returned by doSuspend
 	 * @throws org.springframework.transaction.TransactionSuspensionNotSupportedException
@@ -1142,7 +1190,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * @throws TransactionException in case of system errors
 	 * @see #doSuspend
 	 */
-	protected void doResume(Object transaction, Object suspendedResources) throws TransactionException {
+	protected void doResume(@Nullable Object transaction, Object suspendedResources) throws TransactionException {
 		throw new TransactionSuspensionNotSupportedException(
 				"Transaction manager [" + getClass().getName() + "] does not support transaction suspension");
 	}
@@ -1173,8 +1221,8 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * @see DefaultTransactionStatus#isLocalRollbackOnly()
 	 * @see org.springframework.transaction.TransactionStatus#setRollbackOnly()
 	 * @see org.springframework.transaction.UnexpectedRollbackException
-	 * @see javax.transaction.UserTransaction#commit()
-	 * @see javax.transaction.RollbackException
+	 * @see jakarta.transaction.UserTransaction#commit()
+	 * @see jakarta.transaction.RollbackException
 	 */
 	protected boolean shouldCommitOnGlobalRollbackOnly() {
 		return false;
@@ -1238,8 +1286,8 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * <p>The default implementation simply invokes the {@code afterCompletion} methods
 	 * immediately, passing in "STATUS_UNKNOWN". This is the best we can do if there's no
 	 * chance to determine the actual outcome of the outer transaction.
-	 * @param transaction transaction object returned by {@code doGetTransaction}
-	 * @param synchronizations List of TransactionSynchronization objects
+	 * @param transaction the transaction object returned by {@code doGetTransaction}
+	 * @param synchronizations a List of TransactionSynchronization objects
 	 * @throws TransactionException in case of system errors
 	 * @see #invokeAfterCompletion(java.util.List, int)
 	 * @see TransactionSynchronization#afterCompletion(int)
@@ -1258,7 +1306,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * <p>Called after {@code doCommit} and {@code doRollback} execution,
 	 * on any outcome. The default implementation does nothing.
 	 * <p>Should not throw any exceptions but just issue warnings on errors.
-	 * @param transaction transaction object returned by {@code doGetTransaction}
+	 * @param transaction the transaction object returned by {@code doGetTransaction}
 	 */
 	protected void doCleanupAfterCompletion(Object transaction) {
 	}
@@ -1281,17 +1329,17 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * Holder for suspended resources.
 	 * Used internally by {@code suspend} and {@code resume}.
 	 */
-	protected static class SuspendedResourcesHolder {
+	protected static final class SuspendedResourcesHolder {
 
-		private final Object suspendedResources;
+		private final @Nullable Object suspendedResources;
 
-		private List<TransactionSynchronization> suspendedSynchronizations;
+		private @Nullable List<TransactionSynchronization> suspendedSynchronizations;
 
-		private String name;
+		private @Nullable String name;
 
 		private boolean readOnly;
 
-		private Integer isolationLevel;
+		private @Nullable Integer isolationLevel;
 
 		private boolean wasActive;
 
@@ -1300,8 +1348,9 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		}
 
 		private SuspendedResourcesHolder(
-				Object suspendedResources, List<TransactionSynchronization> suspendedSynchronizations,
-				String name, boolean readOnly, Integer isolationLevel, boolean wasActive) {
+				@Nullable Object suspendedResources, List<TransactionSynchronization> suspendedSynchronizations,
+				@Nullable String name, boolean readOnly, @Nullable Integer isolationLevel, boolean wasActive) {
+
 			this.suspendedResources = suspendedResources;
 			this.suspendedSynchronizations = suspendedSynchronizations;
 			this.name = name;

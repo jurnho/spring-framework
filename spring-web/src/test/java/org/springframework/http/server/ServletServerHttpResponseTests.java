@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,86 +16,145 @@
 
 package org.springframework.http.server;
 
-import java.nio.charset.Charset;
-import java.util.Collections;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-import org.junit.Before;
-import org.junit.Test;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import org.springframework.core.SpringProperties;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.test.MockHttpServletResponse;
 import org.springframework.util.FileCopyUtils;
+import org.springframework.web.testfixture.servlet.MockHttpServletResponse;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
+ * Tests for {@link ServletServerHttpResponse}.
  * @author Arjen Poutsma
  * @author Rossen Stoyanchev
+ * @author Juergen Hoeller
  */
-public class ServletServerHttpResponseTests {
+class ServletServerHttpResponseTests {
 
 	private ServletServerHttpResponse response;
 
 	private MockHttpServletResponse mockResponse;
 
 
-	@Before
-	public void create() throws Exception {
+	@BeforeEach
+	void create() {
 		mockResponse = new MockHttpServletResponse();
 		response = new ServletServerHttpResponse(mockResponse);
 	}
 
 
 	@Test
-	public void setStatusCode() throws Exception {
+	void setStatusCode() {
 		response.setStatusCode(HttpStatus.NOT_FOUND);
-		assertEquals("Invalid status code", 404, mockResponse.getStatus());
+		assertThat(mockResponse.getStatus()).as("Invalid status code").isEqualTo(404);
 	}
 
 	@Test
-	public void getHeaders() throws Exception {
+	void getHeaders() {
 		HttpHeaders headers = response.getHeaders();
 		String headerName = "MyHeader";
 		String headerValue1 = "value1";
 		headers.add(headerName, headerValue1);
 		String headerValue2 = "value2";
 		headers.add(headerName, headerValue2);
-		headers.setContentType(new MediaType("text", "plain", Charset.forName("UTF-8")));
+		headers.setContentType(new MediaType("text", "plain", StandardCharsets.UTF_8));
 
 		response.close();
-		assertTrue("Header not set", mockResponse.getHeaderNames().contains(headerName));
+		assertThat(mockResponse.getHeaderNames().contains(headerName)).as("Header not set").isTrue();
 		List<String> headerValues = mockResponse.getHeaders(headerName);
-		assertTrue("Header not set", headerValues.contains(headerValue1));
-		assertTrue("Header not set", headerValues.contains(headerValue2));
-		assertEquals("Invalid Content-Type", "text/plain;charset=UTF-8", mockResponse.getHeader("Content-Type"));
-		assertEquals("Invalid Content-Type", "text/plain;charset=UTF-8", mockResponse.getContentType());
-		assertEquals("Invalid Content-Type", "UTF-8", mockResponse.getCharacterEncoding());
+		assertThat(headerValues.contains(headerValue1)).as("Header not set").isTrue();
+		assertThat(headerValues.contains(headerValue2)).as("Header not set").isTrue();
+		assertThat(mockResponse.getHeader("Content-Type")).as("Invalid Content-Type").isEqualTo("text/plain;charset=UTF-8");
+		assertThat(mockResponse.getContentType()).as("Invalid Content-Type").isEqualTo("text/plain;charset=UTF-8");
+		assertThat(mockResponse.getCharacterEncoding()).as("Invalid Content-Type").isEqualTo("UTF-8");
 	}
 
 	@Test
-	public void preExistingHeadersFromHttpServletResponse() {
+	void getHeadersWithNoContentType() {
+		this.response = new ServletServerHttpResponse(this.mockResponse);
+		assertThat(this.response.getHeaders().get(HttpHeaders.CONTENT_TYPE)).isNull();
+	}
 
+	@Test
+	void getHeadersWithContentType() {
+		this.mockResponse.setContentType(MediaType.TEXT_PLAIN_VALUE);
+		this.response = new ServletServerHttpResponse(this.mockResponse);
+		assertThat(this.response.getHeaders().get(HttpHeaders.CONTENT_TYPE)).containsExactly(MediaType.TEXT_PLAIN_VALUE);
+	}
+
+	@Test
+	void preExistingHeadersFromHttpServletResponse() {
 		String headerName = "Access-Control-Allow-Origin";
 		String headerValue = "localhost:8080";
 
 		this.mockResponse.addHeader(headerName, headerValue);
+		this.mockResponse.setContentType("text/csv");
 		this.response = new ServletServerHttpResponse(this.mockResponse);
 
-		assertEquals(headerValue, this.response.getHeaders().getFirst(headerName));
-		assertEquals(Collections.singletonList(headerValue), this.response.getHeaders().get(headerName));
-		assertTrue(this.response.getHeaders().containsKey(headerName));
+		assertThat(this.response.getHeaders().getFirst(headerName)).isEqualTo(headerValue);
+		assertThat(this.response.getHeaders().get(headerName)).containsExactly(headerValue);
+		assertThat(this.response.getHeaders().containsHeader(headerName)).isTrue();
+		assertThat(this.response.getHeaders().getAccessControlAllowOrigin()).isEqualTo(headerValue);
+	}
+
+	@Test // gh-25490
+	void preExistingContentTypeIsOverriddenImmediately() {
+		this.mockResponse.setContentType("text/csv");
+		this.response = new ServletServerHttpResponse(this.mockResponse);
+		this.response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+		assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
 	}
 
 	@Test
-	public void getBody() throws Exception {
-		byte[] content = "Hello World".getBytes("UTF-8");
+	void getBody() throws Exception {
+		byte[] content = "Hello World".getBytes(StandardCharsets.UTF_8);
 		FileCopyUtils.copy(content, response.getBody());
 
-		assertArrayEquals("Invalid content written", content, mockResponse.getContentAsByteArray());
+		assertThat(mockResponse.getContentAsByteArray()).as("Invalid content written").isEqualTo(content);
 	}
+
+	@Test
+	void skipFlushCallsOnOutputStream() throws Exception {
+		ServletOutputStream mockStream = mock();
+		HttpServletResponse mockResponse = mock();
+		when(mockResponse.getOutputStream()).thenReturn(mockStream);
+
+		this.response = new ServletServerHttpResponse(mockResponse);
+		byte[] content = "Hello World".getBytes(StandardCharsets.UTF_8);
+		FileCopyUtils.copy(content, response.getBody());
+		response.getBody().flush();
+		verify(mockStream, never()).flush();
+	}
+
+	@Test
+	void appliesFlushCallsOnOutputStream() throws Exception {
+		SpringProperties.setProperty(ServletServerHttpResponse.FLUSH_ENABLED_PROPERTY_NAME, Boolean.TRUE.toString());
+		ServletOutputStream mockStream = mock();
+		HttpServletResponse mockResponse = mock();
+		when(mockResponse.getOutputStream()).thenReturn(mockStream);
+
+		this.response = new ServletServerHttpResponse(mockResponse);
+		byte[] content = "Hello World".getBytes(StandardCharsets.UTF_8);
+		FileCopyUtils.copy(content, response.getBody());
+		response.getBody().flush();
+		verify(mockStream).flush();
+
+		SpringProperties.setProperty(ServletServerHttpResponse.FLUSH_ENABLED_PROPERTY_NAME, null);
+	}
+
 }

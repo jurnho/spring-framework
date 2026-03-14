@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.jmx.access;
+
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.BeanClassLoaderAware;
@@ -48,11 +50,11 @@ import org.springframework.util.ClassUtils;
 public class MBeanProxyFactoryBean extends MBeanClientInterceptor
 		implements FactoryBean<Object>, BeanClassLoaderAware, InitializingBean {
 
-	private Class<?> proxyInterface;
+	private @Nullable Class<?> proxyInterface;
 
-	private ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
+	private @Nullable ClassLoader beanClassLoader = ClassUtils.getDefaultClassLoader();
 
-	private Object mbeanProxy;
+	private @Nullable Object mbeanProxy;
 
 
 	/**
@@ -79,28 +81,31 @@ public class MBeanProxyFactoryBean extends MBeanClientInterceptor
 	public void afterPropertiesSet() throws MBeanServerNotFoundException, MBeanInfoRetrievalException {
 		super.afterPropertiesSet();
 
+		Class<?> interfaceToUse;
 		if (this.proxyInterface == null) {
-			this.proxyInterface = getManagementInterface();
-			if (this.proxyInterface == null) {
+			interfaceToUse = getManagementInterface();
+			if (interfaceToUse == null) {
 				throw new IllegalArgumentException("Property 'proxyInterface' or 'managementInterface' is required");
 			}
+			this.proxyInterface = interfaceToUse;
 		}
 		else {
+			interfaceToUse = this.proxyInterface;
 			if (getManagementInterface() == null) {
-				setManagementInterface(this.proxyInterface);
+				setManagementInterface(interfaceToUse);
 			}
 		}
-		this.mbeanProxy = new ProxyFactory(this.proxyInterface, this).getProxy(this.beanClassLoader);
+		this.mbeanProxy = new ProxyFactory(interfaceToUse, this).getProxy(this.beanClassLoader);
 	}
 
 
 	@Override
-	public Object getObject() {
+	public @Nullable Object getObject() {
 		return this.mbeanProxy;
 	}
 
 	@Override
-	public Class<?> getObjectType() {
+	public @Nullable Class<?> getObjectType() {
 		return this.proxyInterface;
 	}
 

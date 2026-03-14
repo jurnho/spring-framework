@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,23 +16,30 @@
 
 package org.springframework.jms.connection;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.TopicConnection;
-import javax.jms.TopicConnectionFactory;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSContext;
+import jakarta.jms.JMSException;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicConnectionFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.util.Assert;
 
 /**
- * {@link javax.jms.ConnectionFactory} implementation that delegates all calls
- * to a given target {@link javax.jms.ConnectionFactory}, adapting specific
+ * {@link jakarta.jms.ConnectionFactory} implementation that delegates all calls
+ * to a given target {@link jakarta.jms.ConnectionFactory}, adapting specific
  * {@code create(Queue/Topic)Connection} calls to the target ConnectionFactory
- * if necessary (e.g. when running JMS 1.0.2 API based code against a generic
+ * if necessary (for example, when running JMS 1.0.2 API based code against a generic
  * JMS 1.1 ConnectionFactory, such as ActiveMQ's PooledConnectionFactory).
+ *
+ * <p>As of Spring Framework 5, this class supports JMS 2.0 {@code JMSContext}
+ * calls and therefore requires the JMS 2.0 API to be present at runtime.
+ * It may nevertheless run against a JMS 1.1 driver (bound to the JMS 2.0 API)
+ * as long as no actual JMS 2.0 calls are triggered by the application's setup.
  *
  * <p>This class allows for being subclassed, with subclasses overriding only
  * those methods (such as {@link #createConnection()}) that should not simply
@@ -53,7 +60,7 @@ import org.springframework.util.Assert;
 public class DelegatingConnectionFactory
 		implements SmartConnectionFactory, QueueConnectionFactory, TopicConnectionFactory, InitializingBean {
 
-	private ConnectionFactory targetConnectionFactory;
+	private @Nullable ConnectionFactory targetConnectionFactory;
 
 	private boolean shouldStopConnections = false;
 
@@ -61,16 +68,21 @@ public class DelegatingConnectionFactory
 	/**
 	 * Set the target ConnectionFactory that this ConnectionFactory should delegate to.
 	 */
-	public void setTargetConnectionFactory(ConnectionFactory targetConnectionFactory) {
-		Assert.notNull(targetConnectionFactory, "'targetConnectionFactory' must not be null");
+	public void setTargetConnectionFactory(@Nullable ConnectionFactory targetConnectionFactory) {
 		this.targetConnectionFactory = targetConnectionFactory;
 	}
 
 	/**
 	 * Return the target ConnectionFactory that this ConnectionFactory delegates to.
 	 */
-	public ConnectionFactory getTargetConnectionFactory() {
+	public @Nullable ConnectionFactory getTargetConnectionFactory() {
 		return this.targetConnectionFactory;
+	}
+
+	private ConnectionFactory obtainTargetConnectionFactory() {
+		ConnectionFactory target = getTargetConnectionFactory();
+		Assert.state(target != null, "No 'targetConnectionFactory' set");
+		return target;
 	}
 
 	/**
@@ -95,72 +107,92 @@ public class DelegatingConnectionFactory
 
 	@Override
 	public Connection createConnection() throws JMSException {
-		return getTargetConnectionFactory().createConnection();
+		return obtainTargetConnectionFactory().createConnection();
 	}
 
 	@Override
 	public Connection createConnection(String username, String password) throws JMSException {
-		return getTargetConnectionFactory().createConnection(username, password);
+		return obtainTargetConnectionFactory().createConnection(username, password);
 	}
 
 	@Override
 	public QueueConnection createQueueConnection() throws JMSException {
-		ConnectionFactory cf = getTargetConnectionFactory();
-		if (cf instanceof QueueConnectionFactory) {
-			return ((QueueConnectionFactory) cf).createQueueConnection();
+		ConnectionFactory target = obtainTargetConnectionFactory();
+		if (target instanceof QueueConnectionFactory queueFactory) {
+			return queueFactory.createQueueConnection();
 		}
 		else {
-			Connection con = cf.createConnection();
-			if (!(con instanceof QueueConnection)) {
-				throw new javax.jms.IllegalStateException("'targetConnectionFactory' is not a QueueConnectionFactory");
+			Connection con = target.createConnection();
+			if (!(con instanceof QueueConnection queueConnection)) {
+				throw new jakarta.jms.IllegalStateException("'targetConnectionFactory' is not a QueueConnectionFactory");
 			}
-			return (QueueConnection) con;
+			return queueConnection;
 		}
 	}
 
 	@Override
 	public QueueConnection createQueueConnection(String username, String password) throws JMSException {
-		ConnectionFactory cf = getTargetConnectionFactory();
-		if (cf instanceof QueueConnectionFactory) {
-			return ((QueueConnectionFactory) cf).createQueueConnection(username, password);
+		ConnectionFactory target = obtainTargetConnectionFactory();
+		if (target instanceof QueueConnectionFactory queueFactory) {
+			return queueFactory.createQueueConnection(username, password);
 		}
 		else {
-			Connection con = cf.createConnection(username, password);
-			if (!(con instanceof QueueConnection)) {
-				throw new javax.jms.IllegalStateException("'targetConnectionFactory' is not a QueueConnectionFactory");
+			Connection con = target.createConnection(username, password);
+			if (!(con instanceof QueueConnection queueConnection)) {
+				throw new jakarta.jms.IllegalStateException("'targetConnectionFactory' is not a QueueConnectionFactory");
 			}
-			return (QueueConnection) con;
+			return queueConnection;
 		}
 	}
 
 	@Override
 	public TopicConnection createTopicConnection() throws JMSException {
-		ConnectionFactory cf = getTargetConnectionFactory();
-		if (cf instanceof TopicConnectionFactory) {
-			return ((TopicConnectionFactory) cf).createTopicConnection();
+		ConnectionFactory target = obtainTargetConnectionFactory();
+		if (target instanceof TopicConnectionFactory topicFactory) {
+			return topicFactory.createTopicConnection();
 		}
 		else {
-			Connection con = cf.createConnection();
-			if (!(con instanceof TopicConnection)) {
-				throw new javax.jms.IllegalStateException("'targetConnectionFactory' is not a TopicConnectionFactory");
+			Connection con = target.createConnection();
+			if (!(con instanceof TopicConnection topicConnection)) {
+				throw new jakarta.jms.IllegalStateException("'targetConnectionFactory' is not a TopicConnectionFactory");
 			}
-			return (TopicConnection) con;
+			return topicConnection;
 		}
 	}
 
 	@Override
 	public TopicConnection createTopicConnection(String username, String password) throws JMSException {
-		ConnectionFactory cf = getTargetConnectionFactory();
-		if (cf instanceof TopicConnectionFactory) {
-			return ((TopicConnectionFactory) cf).createTopicConnection(username, password);
+		ConnectionFactory target = obtainTargetConnectionFactory();
+		if (target instanceof TopicConnectionFactory topicFactory) {
+			return topicFactory.createTopicConnection(username, password);
 		}
 		else {
-			Connection con = cf.createConnection(username, password);
-			if (!(con instanceof TopicConnection)) {
-				throw new javax.jms.IllegalStateException("'targetConnectionFactory' is not a TopicConnectionFactory");
+			Connection con = target.createConnection(username, password);
+			if (!(con instanceof TopicConnection topicConnection)) {
+				throw new jakarta.jms.IllegalStateException("'targetConnectionFactory' is not a TopicConnectionFactory");
 			}
-			return (TopicConnection) con;
+			return topicConnection;
 		}
+	}
+
+	@Override
+	public JMSContext createContext() {
+		return obtainTargetConnectionFactory().createContext();
+	}
+
+	@Override
+	public JMSContext createContext(String userName, String password) {
+		return obtainTargetConnectionFactory().createContext(userName, password);
+	}
+
+	@Override
+	public JMSContext createContext(String userName, String password, int sessionMode) {
+		return obtainTargetConnectionFactory().createContext(userName, password, sessionMode);
+	}
+
+	@Override
+	public JMSContext createContext(int sessionMode) {
+		return obtainTargetConnectionFactory().createContext(sessionMode);
 	}
 
 	@Override

@@ -6,4 +6,7 @@
  * counterparts for sending messages over the various transports, and
  * {@link org.springframework.web.socket.sockjs.transport.handler.DefaultSockJsService}.
  */
+@NullMarked
 package org.springframework.web.socket.sockjs.transport;
+
+import org.jspecify.annotations.NullMarked;

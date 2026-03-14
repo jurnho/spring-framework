@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,16 +16,16 @@
 
 package org.springframework.jms.support;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.QueueBrowser;
-import javax.jms.QueueRequestor;
-import javax.jms.Session;
-
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.QueueRequestor;
+import jakarta.jms.Session;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.jms.InvalidClientIDException;
 import org.springframework.jms.InvalidDestinationException;
@@ -47,6 +47,7 @@ import org.springframework.util.Assert;
  * within the framework, but also useful for custom JMS access code.
  *
  * @author Juergen Hoeller
+ * @author Sam Brannen
  * @since 1.1
  */
 public abstract class JmsUtils {
@@ -56,35 +57,32 @@ public abstract class JmsUtils {
 
 	/**
 	 * Close the given JMS Connection and ignore any thrown exception.
-	 * This is useful for typical {@code finally} blocks in manual JMS code.
+	 * <p>This is useful for typical {@code finally} blocks in manual JMS code.
 	 * @param con the JMS Connection to close (may be {@code null})
 	 */
-	public static void closeConnection(Connection con) {
+	public static void closeConnection(@Nullable Connection con) {
 		closeConnection(con, false);
 	}
 
 	/**
 	 * Close the given JMS Connection and ignore any thrown exception.
-	 * This is useful for typical {@code finally} blocks in manual JMS code.
+	 * <p>This is useful for typical {@code finally} blocks in manual JMS code.
 	 * @param con the JMS Connection to close (may be {@code null})
 	 * @param stop whether to call {@code stop()} before closing
 	 */
-	public static void closeConnection(Connection con, boolean stop) {
+	public static void closeConnection(@Nullable Connection con, boolean stop) {
 		if (con != null) {
 			try {
 				if (stop) {
-					try {
+					try (con) {
 						con.stop();
-					}
-					finally {
-						con.close();
 					}
 				}
 				else {
 					con.close();
 				}
 			}
-			catch (javax.jms.IllegalStateException ex) {
+			catch (jakarta.jms.IllegalStateException ex) {
 				logger.debug("Ignoring Connection state exception - assuming already closed: " + ex);
 			}
 			catch (JMSException ex) {
@@ -99,10 +97,10 @@ public abstract class JmsUtils {
 
 	/**
 	 * Close the given JMS Session and ignore any thrown exception.
-	 * This is useful for typical {@code finally} blocks in manual JMS code.
+	 * <p>This is useful for typical {@code finally} blocks in manual JMS code.
 	 * @param session the JMS Session to close (may be {@code null})
 	 */
-	public static void closeSession(Session session) {
+	public static void closeSession(@Nullable Session session) {
 		if (session != null) {
 			try {
 				session.close();
@@ -119,10 +117,10 @@ public abstract class JmsUtils {
 
 	/**
 	 * Close the given JMS MessageProducer and ignore any thrown exception.
-	 * This is useful for typical {@code finally} blocks in manual JMS code.
+	 * <p>This is useful for typical {@code finally} blocks in manual JMS code.
 	 * @param producer the JMS MessageProducer to close (may be {@code null})
 	 */
-	public static void closeMessageProducer(MessageProducer producer) {
+	public static void closeMessageProducer(@Nullable MessageProducer producer) {
 		if (producer != null) {
 			try {
 				producer.close();
@@ -139,10 +137,10 @@ public abstract class JmsUtils {
 
 	/**
 	 * Close the given JMS MessageConsumer and ignore any thrown exception.
-	 * This is useful for typical {@code finally} blocks in manual JMS code.
+	 * <p>This is useful for typical {@code finally} blocks in manual JMS code.
 	 * @param consumer the JMS MessageConsumer to close (may be {@code null})
 	 */
-	public static void closeMessageConsumer(MessageConsumer consumer) {
+	public static void closeMessageConsumer(@Nullable MessageConsumer consumer) {
 		if (consumer != null) {
 			// Clear interruptions to ensure that the consumer closes successfully...
 			// (working around misbehaving JMS providers such as ActiveMQ)
@@ -168,10 +166,10 @@ public abstract class JmsUtils {
 
 	/**
 	 * Close the given JMS QueueBrowser and ignore any thrown exception.
-	 * This is useful for typical {@code finally} blocks in manual JMS code.
+	 * <p>This is useful for typical {@code finally} blocks in manual JMS code.
 	 * @param browser the JMS QueueBrowser to close (may be {@code null})
 	 */
-	public static void closeQueueBrowser(QueueBrowser browser) {
+	public static void closeQueueBrowser(@Nullable QueueBrowser browser) {
 		if (browser != null) {
 			try {
 				browser.close();
@@ -188,10 +186,10 @@ public abstract class JmsUtils {
 
 	/**
 	 * Close the given JMS QueueRequestor and ignore any thrown exception.
-	 * This is useful for typical {@code finally} blocks in manual JMS code.
+	 * <p>This is useful for typical {@code finally} blocks in manual JMS code.
 	 * @param requestor the JMS QueueRequestor to close (may be {@code null})
 	 */
-	public static void closeQueueRequestor(QueueRequestor requestor) {
+	public static void closeQueueRequestor(@Nullable QueueRequestor requestor) {
 		if (requestor != null) {
 			try {
 				requestor.close();
@@ -216,16 +214,13 @@ public abstract class JmsUtils {
 		try {
 			session.commit();
 		}
-		catch (javax.jms.TransactionInProgressException ex) {
-			// Ignore -> can only happen in case of a JTA transaction.
-		}
-		catch (javax.jms.IllegalStateException ex) {
+		catch (jakarta.jms.TransactionInProgressException ex) {
 			// Ignore -> can only happen in case of a JTA transaction.
 		}
 	}
 
 	/**
-	 * Rollback the Session if not within a JTA transaction.
+	 * Roll back the Session if not within a JTA transaction.
 	 * @param session the JMS Session to rollback
 	 * @throws JMSException if committing failed
 	 */
@@ -234,10 +229,7 @@ public abstract class JmsUtils {
 		try {
 			session.rollback();
 		}
-		catch (javax.jms.TransactionInProgressException ex) {
-			// Ignore -> can only happen in case of a JTA transaction.
-		}
-		catch (javax.jms.IllegalStateException ex) {
+		catch (jakarta.jms.TransactionInProgressException ex) {
 			// Ignore -> can only happen in case of a JTA transaction.
 		}
 	}
@@ -247,9 +239,9 @@ public abstract class JmsUtils {
 	 * incorporating a linked exception's message if appropriate.
 	 * @param ex the JMSException to build a message for
 	 * @return the descriptive message String
-	 * @see javax.jms.JMSException#getLinkedException()
+	 * @see jakarta.jms.JMSException#getLinkedException()
 	 */
-	public static String buildExceptionMessage(JMSException ex) {
+	public static @Nullable String buildExceptionMessage(JMSException ex) {
 		String message = ex.getMessage();
 		Exception linkedEx = ex.getLinkedException();
 		if (linkedEx != null) {
@@ -267,7 +259,7 @@ public abstract class JmsUtils {
 	}
 
 	/**
-	 * Convert the specified checked {@link javax.jms.JMSException JMSException} to a
+	 * Convert the specified checked {@link jakarta.jms.JMSException JMSException} to a
 	 * Spring runtime {@link org.springframework.jms.JmsException JmsException} equivalent.
 	 * @param ex the original checked JMSException to convert
 	 * @return the Spring runtime JmsException wrapping the given exception
@@ -275,41 +267,41 @@ public abstract class JmsUtils {
 	public static JmsException convertJmsAccessException(JMSException ex) {
 		Assert.notNull(ex, "JMSException must not be null");
 
-		if (ex instanceof javax.jms.IllegalStateException) {
-			return new org.springframework.jms.IllegalStateException((javax.jms.IllegalStateException) ex);
+		if (ex instanceof jakarta.jms.IllegalStateException jakartaISE) {
+			return new org.springframework.jms.IllegalStateException(jakartaISE);
 		}
-		if (ex instanceof javax.jms.InvalidClientIDException) {
-			return new InvalidClientIDException((javax.jms.InvalidClientIDException) ex);
+		if (ex instanceof jakarta.jms.InvalidClientIDException jakartaICIDE) {
+			return new InvalidClientIDException(jakartaICIDE);
 		}
-		if (ex instanceof javax.jms.InvalidDestinationException) {
-			return new InvalidDestinationException((javax.jms.InvalidDestinationException) ex);
+		if (ex instanceof jakarta.jms.InvalidDestinationException jakartaIDE) {
+			return new InvalidDestinationException(jakartaIDE);
 		}
-		if (ex instanceof javax.jms.InvalidSelectorException) {
-			return new InvalidSelectorException((javax.jms.InvalidSelectorException) ex);
+		if (ex instanceof jakarta.jms.InvalidSelectorException jakartaISE) {
+			return new InvalidSelectorException(jakartaISE);
 		}
-		if (ex instanceof javax.jms.JMSSecurityException) {
-			return new JmsSecurityException((javax.jms.JMSSecurityException) ex);
+		if (ex instanceof jakarta.jms.JMSSecurityException jakartaJMSSE) {
+			return new JmsSecurityException(jakartaJMSSE);
 		}
-		if (ex instanceof javax.jms.MessageEOFException) {
-			return new MessageEOFException((javax.jms.MessageEOFException) ex);
+		if (ex instanceof jakarta.jms.MessageEOFException jakartaMEOFE) {
+			return new MessageEOFException(jakartaMEOFE);
 		}
-		if (ex instanceof javax.jms.MessageFormatException) {
-			return new MessageFormatException((javax.jms.MessageFormatException) ex);
+		if (ex instanceof jakarta.jms.MessageFormatException jakartaMFE) {
+			return new MessageFormatException(jakartaMFE);
 		}
-		if (ex instanceof javax.jms.MessageNotReadableException) {
-			return new MessageNotReadableException((javax.jms.MessageNotReadableException) ex);
+		if (ex instanceof jakarta.jms.MessageNotReadableException jakartaMNRE) {
+			return new MessageNotReadableException(jakartaMNRE);
 		}
-		if (ex instanceof javax.jms.MessageNotWriteableException) {
-			return new MessageNotWriteableException((javax.jms.MessageNotWriteableException) ex);
+		if (ex instanceof jakarta.jms.MessageNotWriteableException jakartaMNWE) {
+			return new MessageNotWriteableException(jakartaMNWE);
 		}
-		if (ex instanceof javax.jms.ResourceAllocationException) {
-			return new ResourceAllocationException((javax.jms.ResourceAllocationException) ex);
+		if (ex instanceof jakarta.jms.ResourceAllocationException jakartaRAE) {
+			return new ResourceAllocationException(jakartaRAE);
 		}
-		if (ex instanceof javax.jms.TransactionInProgressException) {
-			return new TransactionInProgressException((javax.jms.TransactionInProgressException) ex);
+		if (ex instanceof jakarta.jms.TransactionInProgressException jakartaTIPE) {
+			return new TransactionInProgressException(jakartaTIPE);
 		}
-		if (ex instanceof javax.jms.TransactionRolledBackException) {
-			return new TransactionRolledBackException((javax.jms.TransactionRolledBackException) ex);
+		if (ex instanceof jakarta.jms.TransactionRolledBackException jakartaTRBE) {
+			return new TransactionRolledBackException(jakartaTRBE);
 		}
 
 		// fallback

@@ -1,11 +1,11 @@
 /*
- * Copyright 2010-2013 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,46 +18,75 @@ package org.springframework.cache;
 
 import java.util.UUID;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.cache.support.NoOpCacheManager;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-public class NoOpCacheManagerTests {
+/**
+ * Tests for {@link NoOpCacheManager}.
+ *
+ * @author Costin Leau
+ * @author Stephane Nicoll
+ */
+class NoOpCacheManagerTests {
 
-	private CacheManager manager;
+	private final CacheManager manager = new NoOpCacheManager();
 
-	@Before
-	public void setup() {
-		manager = new NoOpCacheManager();
+	@Test
+	void testGetCache() {
+		Cache cache = this.manager.getCache("bucket");
+		assertThat(cache).isNotNull();
+		assertThat(this.manager.getCache("bucket")).isSameAs(cache);
 	}
 
 	@Test
-	public void testGetCache() throws Exception {
-		Cache cache = manager.getCache("bucket");
-		assertNotNull(cache);
-		assertSame(cache, manager.getCache("bucket"));
-	}
-
-	@Test
-	public void testNoOpCache() throws Exception {
-		String name = UUID.randomUUID().toString();
-		Cache cache = manager.getCache(name);
-		assertEquals(name, cache.getName());
+	void testNoOpCache() {
+		String name = createRandomKey();
+		Cache cache = this.manager.getCache(name);
+		assertThat(cache.getName()).isEqualTo(name);
 		Object key = new Object();
 		cache.put(key, new Object());
-		assertNull(cache.get(key));
-		assertNull(cache.get(key, Object.class));
-		assertNull(cache.getNativeCache());
+		assertThat(cache.get(key)).isNull();
+		assertThat(cache.get(key, Object.class)).isNull();
+		assertThat(cache.getNativeCache()).isSameAs(cache);
 	}
 
 	@Test
-	public void testCacheName() throws Exception {
+	void testCacheName() {
 		String name = "bucket";
-		assertFalse(manager.getCacheNames().contains(name));
-		manager.getCache(name);
-		assertTrue(manager.getCacheNames().contains(name));
+		assertThat(this.manager.getCacheNames()).doesNotContain(name);
+		this.manager.getCache(name);
+		assertThat(this.manager.getCacheNames()).contains(name);
 	}
+
+	@Test
+	void testCacheCallable() {
+		String name = createRandomKey();
+		Cache cache = this.manager.getCache(name);
+		Object returnValue = new Object();
+		Object value = cache.get(new Object(), () -> returnValue);
+		assertThat(value).isEqualTo(returnValue);
+	}
+
+	@Test
+	void testCacheGetCallableFail() {
+		Cache cache = this.manager.getCache(createRandomKey());
+		String key = createRandomKey();
+		try {
+			cache.get(key, () -> {
+				throw new UnsupportedOperationException("Expected exception");
+			});
+		}
+		catch (Cache.ValueRetrievalException ex) {
+			assertThat(ex.getCause()).isNotNull();
+			assertThat(ex.getCause().getClass()).isEqualTo(UnsupportedOperationException.class);
+		}
+	}
+
+	private String createRandomKey() {
+		return UUID.randomUUID().toString();
+	}
+
 }

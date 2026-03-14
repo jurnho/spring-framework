@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,9 +18,13 @@ package org.springframework.beans.factory.config;
 
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.beans.BeansException;
 import org.springframework.beans.TypeConverter;
 import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 
 /**
  * Extension of the {@link org.springframework.beans.factory.BeanFactory}
@@ -61,7 +65,6 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	/**
 	 * Constant that indicates no externally defined autowiring. Note that
 	 * BeanFactoryAware etc and annotation-driven injection will still be applied.
-	 * @see #createBean
 	 * @see #autowire
 	 * @see #autowireBeanProperties
 	 */
@@ -70,7 +73,6 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	/**
 	 * Constant that indicates autowiring bean properties by name
 	 * (applying to all bean property setters).
-	 * @see #createBean
 	 * @see #autowire
 	 * @see #autowireBeanProperties
 	 */
@@ -79,7 +81,6 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	/**
 	 * Constant that indicates autowiring bean properties by type
 	 * (applying to all bean property setters).
-	 * @see #createBean
 	 * @see #autowire
 	 * @see #autowireBeanProperties
 	 */
@@ -88,7 +89,6 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	/**
 	 * Constant that indicates autowiring the greediest constructor that
 	 * can be satisfied (involves resolving the appropriate constructor).
-	 * @see #createBean
 	 * @see #autowire
 	 */
 	int AUTOWIRE_CONSTRUCTOR = 3;
@@ -96,13 +96,24 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	/**
 	 * Constant that indicates determining an appropriate autowire strategy
 	 * through introspection of the bean class.
-	 * @see #createBean
 	 * @see #autowire
-	 * @deprecated as of Spring 3.0: If you are using mixed autowiring strategies,
-	 * prefer annotation-based autowiring for clearer demarcation of autowiring needs.
+	 * @deprecated If you are using mixed autowiring strategies, prefer
+	 * annotation-based autowiring for clearer demarcation of autowiring needs.
 	 */
-	@Deprecated
+	@Deprecated(since = "3.0")
 	int AUTOWIRE_AUTODETECT = 4;
+
+	/**
+	 * Suffix for the "original instance" convention when initializing an existing
+	 * bean instance: to be appended to the fully-qualified bean class name,
+	 * for example, "com.mypackage.MyClass.ORIGINAL", in order to enforce the given instance
+	 * to be returned, i.e. no proxies etc.
+	 * @since 5.1
+	 * @see #initializeBean(Object, String)
+	 * @see #applyBeanPostProcessorsBeforeInitialization(Object, String)
+	 * @see #applyBeanPostProcessorsAfterInitialization(Object, String)
+	 */
+	String ORIGINAL_INSTANCE_SUFFIX = ".ORIGINAL";
 
 
 	//-------------------------------------------------------------------------
@@ -115,8 +126,10 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	 * {@link BeanPostProcessor BeanPostProcessors}.
 	 * <p>Note: This is intended for creating a fresh instance, populating annotated
 	 * fields and methods as well as applying all standard bean initialization callbacks.
-	 * It does <i>not</> imply traditional by-name or by-type autowiring of properties;
-	 * use {@link #createBean(Class, int, boolean)} for those purposes.
+	 * Constructor resolution is based on Kotlin primary / single public / single non-public,
+	 * with a fallback to the default constructor in ambiguous scenarios, also influenced
+	 * by {@link SmartInstantiationAwareBeanPostProcessor#determineCandidateConstructors}
+	 * (for example, for annotation-driven constructor selection).
 	 * @param beanClass the class of the bean to create
 	 * @return the new bean instance
 	 * @throws BeansException if instantiation or wiring failed
@@ -125,7 +138,7 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 
 	/**
 	 * Populate the given bean instance through applying after-instantiation callbacks
-	 * and bean property post-processing (e.g. for annotation-driven injection).
+	 * and bean property post-processing (for example, for annotation-driven injection).
 	 * <p>Note: This is essentially intended for (re-)populating annotated fields and
 	 * methods, either for new instances or for deserialized instances. It does
 	 * <i>not</i> imply traditional by-name or by-type autowiring of properties;
@@ -154,15 +167,6 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	 */
 	Object configureBean(Object existingBean, String beanName) throws BeansException;
 
-	/**
-	 * Resolve the specified dependency against the beans defined in this factory.
-	 * @param descriptor the descriptor for the dependency
-	 * @param beanName the name of the bean which declares the present dependency
-	 * @return the resolved object, or {@code null} if none found
-	 * @throws BeansException if dependency resolution failed
-	 */
-	Object resolveDependency(DependencyDescriptor descriptor, String beanName) throws BeansException;
-
 
 	//-------------------------------------------------------------------------
 	// Specialized methods for fine-grained control over the bean lifecycle
@@ -184,14 +188,16 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	 * @see #AUTOWIRE_BY_NAME
 	 * @see #AUTOWIRE_BY_TYPE
 	 * @see #AUTOWIRE_CONSTRUCTOR
+	 * @deprecated in favor of {@link #createBean(Class)}
 	 */
+	@Deprecated(since = "6.1")
 	Object createBean(Class<?> beanClass, int autowireMode, boolean dependencyCheck) throws BeansException;
 
 	/**
 	 * Instantiate a new bean instance of the given class with the specified autowire
 	 * strategy. All constants defined in this interface are supported here.
 	 * Can also be invoked with {@code AUTOWIRE_NO} in order to just apply
-	 * before-instantiation callbacks (e.g. for annotation-driven injection).
+	 * before-instantiation callbacks (for example, for annotation-driven injection).
 	 * <p>Does <i>not</i> apply standard {@link BeanPostProcessor BeanPostProcessors}
 	 * callbacks or perform any further initialization of the bean. This interface
 	 * offers distinct, fine-grained operations for those purposes, for example
@@ -218,7 +224,7 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	/**
 	 * Autowire the bean properties of the given bean instance by name or type.
 	 * Can also be invoked with {@code AUTOWIRE_NO} in order to just apply
-	 * after-instantiation callbacks (e.g. for annotation-driven injection).
+	 * after-instantiation callbacks (for example, for annotation-driven injection).
 	 * <p>Does <i>not</i> apply standard {@link BeanPostProcessor BeanPostProcessors}
 	 * callbacks or perform any further initialization of the bean. This interface
 	 * offers distinct, fine-grained operations for those purposes, for example
@@ -270,9 +276,12 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	 * for callbacks but not checked against the registered bean definitions.
 	 * @param existingBean the existing bean instance
 	 * @param beanName the name of the bean, to be passed to it if necessary
-	 * (only passed to {@link BeanPostProcessor BeanPostProcessors})
+	 * (only passed to {@link BeanPostProcessor BeanPostProcessors};
+	 * can follow the {@link #ORIGINAL_INSTANCE_SUFFIX} convention in order to
+	 * enforce the given instance to be returned, i.e. no proxies etc)
 	 * @return the bean instance to use, either the original or a wrapped one
 	 * @throws BeansException if the initialization failed
+	 * @see #ORIGINAL_INSTANCE_SUFFIX
 	 */
 	Object initializeBean(Object existingBean, String beanName) throws BeansException;
 
@@ -280,12 +289,19 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	 * Apply {@link BeanPostProcessor BeanPostProcessors} to the given existing bean
 	 * instance, invoking their {@code postProcessBeforeInitialization} methods.
 	 * The returned bean instance may be a wrapper around the original.
-	 * @param existingBean the new bean instance
-	 * @param beanName the name of the bean
+	 * @param existingBean the existing bean instance
+	 * @param beanName the name of the bean, to be passed to it if necessary
+	 * (only passed to {@link BeanPostProcessor BeanPostProcessors};
+	 * can follow the {@link #ORIGINAL_INSTANCE_SUFFIX} convention in order to
+	 * enforce the given instance to be returned, i.e. no proxies etc)
 	 * @return the bean instance to use, either the original or a wrapped one
 	 * @throws BeansException if any post-processing failed
 	 * @see BeanPostProcessor#postProcessBeforeInitialization
+	 * @see #ORIGINAL_INSTANCE_SUFFIX
+	 * @deprecated as of 6.1, in favor of implicit post-processing through
+	 * {@link #initializeBean(Object, String)}
 	 */
+	@Deprecated(since = "6.1")
 	Object applyBeanPostProcessorsBeforeInitialization(Object existingBean, String beanName)
 			throws BeansException;
 
@@ -293,17 +309,24 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	 * Apply {@link BeanPostProcessor BeanPostProcessors} to the given existing bean
 	 * instance, invoking their {@code postProcessAfterInitialization} methods.
 	 * The returned bean instance may be a wrapper around the original.
-	 * @param existingBean the new bean instance
-	 * @param beanName the name of the bean
+	 * @param existingBean the existing bean instance
+	 * @param beanName the name of the bean, to be passed to it if necessary
+	 * (only passed to {@link BeanPostProcessor BeanPostProcessors};
+	 * can follow the {@link #ORIGINAL_INSTANCE_SUFFIX} convention in order to
+	 * enforce the given instance to be returned, i.e. no proxies etc)
 	 * @return the bean instance to use, either the original or a wrapped one
 	 * @throws BeansException if any post-processing failed
 	 * @see BeanPostProcessor#postProcessAfterInitialization
+	 * @see #ORIGINAL_INSTANCE_SUFFIX
+	 * @deprecated as of 6.1, in favor of implicit post-processing through
+	 * {@link #initializeBean(Object, String)}
 	 */
+	@Deprecated(since = "6.1")
 	Object applyBeanPostProcessorsAfterInitialization(Object existingBean, String beanName)
 			throws BeansException;
 
 	/**
-	 * Destroy the given bean instance (typically coming from {@link #createBean}),
+	 * Destroy the given bean instance (typically coming from {@link #createBean(Class)}),
 	 * applying the {@link org.springframework.beans.factory.DisposableBean} contract as well as
 	 * registered {@link DestructionAwareBeanPostProcessor DestructionAwareBeanPostProcessors}.
 	 * <p>Any exception that arises during destruction should be caught
@@ -312,18 +335,70 @@ public interface AutowireCapableBeanFactory extends BeanFactory {
 	 */
 	void destroyBean(Object existingBean);
 
+
+	//-------------------------------------------------------------------------
+	// Delegate methods for resolving injection points
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Resolve the bean instance that uniquely matches the given object type, if any,
+	 * including its bean name.
+	 * <p>This is effectively a variant of {@link #getBean(Class)} which preserves the
+	 * bean name of the matching instance.
+	 * @param requiredType type the bean must match; can be an interface or superclass
+	 * @return the bean name plus bean instance
+	 * @throws NoSuchBeanDefinitionException if no matching bean was found
+	 * @throws NoUniqueBeanDefinitionException if more than one matching bean was found
+	 * @throws BeansException if the bean could not be created
+	 * @since 4.3.3
+	 * @see #getBean(Class)
+	 */
+	<T> NamedBeanHolder<T> resolveNamedBean(Class<T> requiredType) throws BeansException;
+
+	/**
+	 * Resolve a bean instance for the given bean name, providing a dependency descriptor
+	 * for exposure to target factory methods.
+	 * <p>This is effectively a variant of {@link #getBean(String, Class)} which supports
+	 * factory methods with an {@link org.springframework.beans.factory.InjectionPoint}
+	 * argument.
+	 * @param name the name of the bean to look up
+	 * @param descriptor the dependency descriptor for the requesting injection point
+	 * @return the corresponding bean instance
+	 * @throws NoSuchBeanDefinitionException if there is no bean with the specified name
+	 * @throws BeansException if the bean could not be created
+	 * @since 5.1.5
+	 * @see #getBean(String, Class)
+	 */
+	Object resolveBeanByName(String name, DependencyDescriptor descriptor) throws BeansException;
+
 	/**
 	 * Resolve the specified dependency against the beans defined in this factory.
-	 * @param descriptor the descriptor for the dependency
-	 * @param beanName the name of the bean which declares the present dependency
-	 * @param autowiredBeanNames a Set that all names of autowired beans (used for
-	 * resolving the present dependency) are supposed to be added to
-	 * @param typeConverter the TypeConverter to use for populating arrays and
-	 * collections
+	 * @param descriptor the descriptor for the dependency (field/method/constructor)
+	 * @param requestingBeanName the name of the bean which declares the given dependency
 	 * @return the resolved object, or {@code null} if none found
-	 * @throws BeansException if dependency resolution failed
+	 * @throws NoSuchBeanDefinitionException if no matching bean was found
+	 * @throws NoUniqueBeanDefinitionException if more than one matching bean was found
+	 * @throws BeansException if dependency resolution failed for any other reason
+	 * @since 2.5
+	 * @see #resolveDependency(DependencyDescriptor, String, Set, TypeConverter)
 	 */
-	Object resolveDependency(DependencyDescriptor descriptor, String beanName,
-			Set<String> autowiredBeanNames, TypeConverter typeConverter) throws BeansException;
+	@Nullable Object resolveDependency(DependencyDescriptor descriptor, @Nullable String requestingBeanName) throws BeansException;
+
+	/**
+	 * Resolve the specified dependency against the beans defined in this factory.
+	 * @param descriptor the descriptor for the dependency (field/method/constructor)
+	 * @param requestingBeanName the name of the bean which declares the given dependency
+	 * @param autowiredBeanNames a Set that all names of autowired beans (used for
+	 * resolving the given dependency) are supposed to be added to
+	 * @param typeConverter the TypeConverter to use for populating arrays and collections
+	 * @return the resolved object, or {@code null} if none found
+	 * @throws NoSuchBeanDefinitionException if no matching bean was found
+	 * @throws NoUniqueBeanDefinitionException if more than one matching bean was found
+	 * @throws BeansException if dependency resolution failed for any other reason
+	 * @since 2.5
+	 * @see DependencyDescriptor
+	 */
+	@Nullable Object resolveDependency(DependencyDescriptor descriptor, @Nullable String requestingBeanName,
+			@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) throws BeansException;
 
 }

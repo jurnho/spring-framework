@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,13 +36,14 @@ import org.springframework.beans.factory.xml.NamespaceHandlerSupport;
  * @author Juergen Hoeller
  * @author Mark Fisher
  * @since 2.0
+ * @deprecated with no replacement as not actively maintained anymore
  */
+@Deprecated(since = "7.0")
 public class LangNamespaceHandler extends NamespaceHandlerSupport {
 
 	@Override
 	public void init() {
 		registerScriptBeanDefinitionParser("groovy", "org.springframework.scripting.groovy.GroovyScriptFactory");
-		registerScriptBeanDefinitionParser("jruby", "org.springframework.scripting.jruby.JRubyScriptFactory");
 		registerScriptBeanDefinitionParser("bsh", "org.springframework.scripting.bsh.BshScriptFactory");
 		registerScriptBeanDefinitionParser("std", "org.springframework.scripting.support.StandardScriptFactory");
 		registerBeanDefinitionParser("defaults", new ScriptingDefaultsParser());

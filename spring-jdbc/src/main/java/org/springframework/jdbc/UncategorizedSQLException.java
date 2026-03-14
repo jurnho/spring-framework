@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,10 +18,12 @@ package org.springframework.jdbc;
 
 import java.sql.SQLException;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.dao.UncategorizedDataAccessException;
 
 /**
- * Exception thrown when we can't classify a SQLException into
+ * Exception thrown when we can't classify an SQLException into
  * one of our generic data access exceptions.
  *
  * @author Rod Johnson
@@ -30,8 +32,8 @@ import org.springframework.dao.UncategorizedDataAccessException;
 @SuppressWarnings("serial")
 public class UncategorizedSQLException extends UncategorizedDataAccessException {
 
-	/** SQL that led to the problem */
-	private final String sql;
+	/** SQL that led to the problem. */
+	private final @Nullable String sql;
 
 
 	/**
@@ -40,9 +42,10 @@ public class UncategorizedSQLException extends UncategorizedDataAccessException 
 	 * @param sql the offending SQL statement
 	 * @param ex the root cause
 	 */
-	public UncategorizedSQLException(String task, String sql, SQLException ex) {
-		super(task + "; uncategorized SQLException for SQL [" + sql + "]; SQL state [" +
-				ex.getSQLState() + "]; error code [" + ex.getErrorCode() + "]; " + ex.getMessage(), ex);
+	public UncategorizedSQLException(String task, @Nullable String sql, SQLException ex) {
+		super(task + "; uncategorized SQLException" + (sql != null ? " for SQL [" + sql + "]" : "") +
+				"; SQL state [" + ex.getSQLState() + "]; error code [" + ex.getErrorCode() + "]; " +
+				ex.getMessage(), ex);
 		this.sql = sql;
 	}
 
@@ -50,14 +53,14 @@ public class UncategorizedSQLException extends UncategorizedDataAccessException 
 	/**
 	 * Return the underlying SQLException.
 	 */
-	public SQLException getSQLException() {
+	public @Nullable SQLException getSQLException() {
 		return (SQLException) getCause();
 	}
 
 	/**
-	 * Return the SQL that led to the problem.
+	 * Return the SQL that led to the problem (if known).
 	 */
-	public String getSql() {
+	public @Nullable String getSql() {
 		return this.sql;
 	}
 

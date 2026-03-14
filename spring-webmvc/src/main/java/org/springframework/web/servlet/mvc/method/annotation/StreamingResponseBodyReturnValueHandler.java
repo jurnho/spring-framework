@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,13 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.web.servlet.mvc.method.annotation;
 
-import java.io.OutputStream;
 import java.util.concurrent.Callable;
 
-import javax.servlet.ServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
@@ -32,7 +33,6 @@ import org.springframework.web.context.request.async.WebAsyncUtils;
 import org.springframework.web.filter.ShallowEtagHeaderFilter;
 import org.springframework.web.method.support.HandlerMethodReturnValueHandler;
 import org.springframework.web.method.support.ModelAndViewContainer;
-
 
 /**
  * Supports return values of type
@@ -50,14 +50,15 @@ public class StreamingResponseBodyReturnValueHandler implements HandlerMethodRet
 			return true;
 		}
 		else if (ResponseEntity.class.isAssignableFrom(returnType.getParameterType())) {
-			Class<?> bodyType = ResolvableType.forMethodParameter(returnType).getGeneric(0).resolve();
+			Class<?> bodyType = ResolvableType.forMethodParameter(returnType).getGeneric().resolve();
 			return (bodyType != null && StreamingResponseBody.class.isAssignableFrom(bodyType));
 		}
 		return false;
 	}
 
 	@Override
-	public void handleReturnValue(Object returnValue, MethodParameter returnType,
+	@SuppressWarnings("resource")
+	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
 			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
 
 		if (returnValue == null) {
@@ -66,46 +67,47 @@ public class StreamingResponseBodyReturnValueHandler implements HandlerMethodRet
 		}
 
 		HttpServletResponse response = webRequest.getNativeResponse(HttpServletResponse.class);
+		Assert.state(response != null, "No HttpServletResponse");
 		ServerHttpResponse outputMessage = new ServletServerHttpResponse(response);
 
-		if (ResponseEntity.class.isAssignableFrom(returnValue.getClass())) {
-			ResponseEntity<?> responseEntity = (ResponseEntity<?>) returnValue;
-			outputMessage.setStatusCode(responseEntity.getStatusCode());
+		if (returnValue instanceof ResponseEntity<?> responseEntity) {
+			response.setStatus(responseEntity.getStatusCode().value());
 			outputMessage.getHeaders().putAll(responseEntity.getHeaders());
-
 			returnValue = responseEntity.getBody();
 			if (returnValue == null) {
 				mavContainer.setRequestHandled(true);
+				outputMessage.flush();
 				return;
 			}
 		}
 
 		ServletRequest request = webRequest.getNativeRequest(ServletRequest.class);
+		Assert.state(request != null, "No ServletRequest");
 		ShallowEtagHeaderFilter.disableContentCaching(request);
 
-		Assert.isInstanceOf(StreamingResponseBody.class, returnValue);
+		Assert.isInstanceOf(StreamingResponseBody.class, returnValue, "StreamingResponseBody expected");
 		StreamingResponseBody streamingBody = (StreamingResponseBody) returnValue;
 
-		Callable<Void> callable = new StreamingResponseBodyTask(outputMessage.getBody(), streamingBody);
+		Callable<Void> callable = new StreamingResponseBodyTask(outputMessage, streamingBody);
 		WebAsyncUtils.getAsyncManager(webRequest).startCallableProcessing(callable, mavContainer);
 	}
 
 
 	private static class StreamingResponseBodyTask implements Callable<Void> {
 
-		private final OutputStream outputStream;
+		private final ServerHttpResponse outputMessage;
 
 		private final StreamingResponseBody streamingBody;
 
-
-		public StreamingResponseBodyTask(OutputStream outputStream, StreamingResponseBody streamingBody) {
-			this.outputStream = outputStream;
+		public StreamingResponseBodyTask(ServerHttpResponse outputMessage, StreamingResponseBody streamingBody) {
+			this.outputMessage = outputMessage;
 			this.streamingBody = streamingBody;
 		}
 
 		@Override
 		public Void call() throws Exception {
-			this.streamingBody.writeTo(this.outputStream);
+			this.streamingBody.writeTo(this.outputMessage.getBody());
+			this.outputMessage.flush();
 			return null;
 		}
 	}

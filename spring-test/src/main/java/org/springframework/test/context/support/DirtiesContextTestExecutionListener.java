@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2015 the original author or authors.
+ * Copyright 2002-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,8 +23,9 @@ import org.springframework.test.annotation.DirtiesContext.MethodMode;
 import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
 
-import static org.springframework.test.annotation.DirtiesContext.ClassMode.*;
-import static org.springframework.test.annotation.DirtiesContext.MethodMode.*;
+import static org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS;
+import static org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD;
+import static org.springframework.test.annotation.DirtiesContext.MethodMode.AFTER_METHOD;
 
 /**
  * {@code TestExecutionListener} which provides support for marking the
@@ -54,11 +55,20 @@ import static org.springframework.test.annotation.DirtiesContext.MethodMode.*;
 public class DirtiesContextTestExecutionListener extends AbstractDirtiesContextTestExecutionListener {
 
 	/**
-	 * Returns {@code 3000}.
+	 * The {@link #getOrder() order} value for this listener: {@value}.
+	 * @since 6.2.3
+	 */
+	public static final int ORDER = 3000;
+
+	/**
+	 * Returns {@value #ORDER}, which ensures that the {@code DirtiesContextTestExecutionListener}
+	 * is ordered after the
+	 * {@link DependencyInjectionTestExecutionListener DependencyInjectionTestExecutionListener}
+	 * and before the {@link CommonCachesTestExecutionListener CommonCachesTestExecutionListener}.
 	 */
 	@Override
 	public final int getOrder() {
-		return 3000;
+		return ORDER;
 	}
 
 	/**
